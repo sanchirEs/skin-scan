@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { M } from "@/config/messages";
-import { demoAnalysis } from "@/lib/demo";
+import { requestAiAnalysis } from "@/lib/ai/client";
+import { DEMO_AI, demoAnalysis } from "@/lib/demo";
 import { analyzeFrame, type FrameAnalysis } from "@/lib/vision/analyze-frame";
 import { VisionLoadError } from "@/lib/vision/landmarker";
 import { TimeoutError, withTimeout } from "@/lib/timeout";
+import { RAMPS } from "../strip/colors";
 import { Strip } from "../strip/Strip";
 import { Button } from "../ui/Button";
 import { useFlow } from "./flow";
@@ -17,6 +19,7 @@ const PENDING = (["redness", "evenness", "darkCircles", "shine"] as const).map((
   id,
   intensity: 0,
   label: M.report.measures[id].name,
+  ramp: RAMPS[id],
 }));
 
 export function Analyzing() {
@@ -44,13 +47,24 @@ export function Analyzing() {
       const wait = MIN_SHOW_MS - (performance.now() - started);
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       if (!alive) return;
-      if (res.ok) dispatch({ type: "analyzed", analysis: res });
-      else setFailure(res.reason);
+      if (!res.ok) return setFailure(res.reason);
+      dispatch({ type: "analyzed", analysis: res });
+      if (!state.aiConsent) return;
+      // The AI check runs in the background while the person answers the quiz.
+      const token = Date.now();
+      dispatch({ type: "aiStart", token });
+      if (state.demo) {
+        setTimeout(() => dispatch({ type: "aiDone", token, outcome: { ok: true, result: DEMO_AI } }), 2500);
+      } else if (!res.uploadBlob) {
+        dispatch({ type: "aiDone", token, outcome: { ok: false, error: "bad_image" } });
+      } else {
+        requestAiAnalysis(res.uploadBlob).then((outcome) => dispatch({ type: "aiDone", token, outcome }));
+      }
     })();
     return () => {
       alive = false;
     };
-  }, [state.captured, state.demo, dispatch]);
+  }, [state.captured, state.demo, state.aiConsent, dispatch]);
 
   return (
     <div className="flex min-h-[calc(100dvh-56px)] flex-col px-5 pt-9 pb-[max(20px,env(safe-area-inset-bottom))]">

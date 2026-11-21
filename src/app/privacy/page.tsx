@@ -15,7 +15,14 @@ export default function Privacy() {
       <div className="mt-6 space-y-5 text-[16px] leading-[1.6] text-ink-soft [&_h2]:mt-8 [&_h2]:text-[18px] [&_h2]:font-semibold [&_h2]:text-ink">
         <h2>Your photo</h2>
         <p>
-          The scan runs on your phone. Your face photo is never uploaded, stored or shared. When you leave the page, it is gone.
+          With &ldquo;Scan on this phone only&rdquo;, the scan runs entirely on your phone and the photo never leaves it. When you
+          leave the page, it is gone.
+        </p>
+        <h2>The AI check</h2>
+        <p>
+          If you choose &ldquo;Scan with AI check&rdquo;, a cropped photo of your face is sent securely to our server and on to our
+          AI partner, Perfect Corp (YouCam), to find acne, wrinkles and pores. We do not store the photo. Perfect Corp keeps the
+          analysis results for up to 30 days under its own privacy policy. We keep only the resulting numbers.
         </p>
         <h2>Anonymous scan numbers</h2>
         <p>

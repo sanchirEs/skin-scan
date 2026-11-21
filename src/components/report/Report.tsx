@@ -3,11 +3,14 @@
 import { useState } from "react";
 import { BRAND } from "@/config/brand";
 import { M } from "@/config/messages";
+import type { AiConcernId } from "@/lib/ai/types";
 import type { MeasureId } from "@/lib/analysis/types";
 import { useFlow } from "../flow/flow";
+import { AI_RAMPS, RAMPS, rampChips } from "../strip/colors";
 import { Strip } from "../strip/Strip";
 import { Button, LinkButton } from "../ui/Button";
 import { DebugPanel } from "./DebugPanel";
+import { KeyCard } from "./KeyCard";
 import { KeyScale } from "./KeyScale";
 import { RoutineList } from "./Routine";
 import { ToneKey } from "./ToneKey";
@@ -16,24 +19,51 @@ import { ZoneOverlay } from "./ZoneOverlay";
 
 const ANSWER_ONLY = new Set(["breakouts", "dryness", "sensitivity", "aging"]);
 
+/** Pad keys are "m:<measure>" for on-phone readings and "ai:<concern>" for the AI check. */
+type PadKey = `m:${MeasureId}` | `ai:${AiConcernId}`;
+
 export function Report() {
   const { state, dispatch } = useFlow();
   const plan = useRoutine();
   const a = state.analysis;
-  const strongest = a ? [...a.readings].sort((x, y) => y.intensity - x.intensity)[0].id : "redness";
-  const [selected, setSelected] = useState<MeasureId>(strongest);
+  const aiResult = state.ai.status === "done" ? state.ai.result : null;
+  const aiConcerns = aiResult?.concerns ?? [];
+
+  // Start on the strongest finding, AI first when it already arrived.
+  const ranked: { key: PadKey; severity: number }[] = [
+    ...aiConcerns.map((c) => ({ key: `ai:${c.id}` as PadKey, severity: c.severity })),
+    ...(a?.readings ?? []).map((r) => ({ key: `m:${r.id}` as PadKey, severity: r.intensity })),
+  ].sort((x, y) => y.severity - x.severity);
+  const [selected, setSelected] = useState<PadKey>(ranked[0]?.key ?? "m:redness");
   const [showZones, setShowZones] = useState(true);
   // The strip develops once, the first time the reading appears.
   const [develop] = useState(true);
 
   if (!a || !plan) return null;
-  const top = a.readings.find((r) => r.id === strongest)!;
+
   const levelWord = (r: (typeof a.readings)[number]) =>
     r.id === "shine" && r.label === "balanced" ? M.report.balanced : M.report.levels[r.level];
-  const summary =
-    top.level === "none" ? M.report.summaryCalm : M.report.summary(M.report.measures[top.id].name, levelWord(top));
-  const selectedReading = a.readings.find((r) => r.id === selected)!;
+  const top = ranked[0];
+  const topLevel =
+    top?.key.startsWith("ai:")
+      ? aiConcerns.find((c) => `ai:${c.id}` === top.key)!.level
+      : a.readings.find((r) => `m:${r.id}` === top?.key)?.level ?? "none";
+  const topName = top
+    ? top.key.startsWith("ai:")
+      ? M.ai.names[top.key.slice(3) as AiConcernId]
+      : M.report.measures[top.key.slice(2) as MeasureId].name
+    : "";
+  const summary = !top || topLevel === "none" ? M.report.summaryCalm : M.report.summary(topName, M.report.levels[topLevel]);
+
+  const selectedAi = selected.startsWith("ai:") ? aiConcerns.find((c) => `ai:${c.id}` === selected) : undefined;
+  const selectedReading = selected.startsWith("m:") ? a.readings.find((r) => `m:${r.id}` === selected) : undefined;
+  const select = (key: string) => {
+    setSelected(key as PadKey);
+    setShowZones(true);
+  };
   const answered = plan.concerns.filter((c) => ANSWER_ONLY.has(c.id) || c.source === "answers");
+  const aiFailMessage =
+    state.ai.status === "failed" ? M.ai.failed[state.ai.error] ?? M.ai.failed.default : null;
 
   return (
     <div className="px-5 pt-8 pb-40">
@@ -41,32 +71,86 @@ export function Report() {
       <p className="mt-3 max-w-[34ch] text-[19px] font-semibold leading-snug">{summary}</p>
       <p className="mt-1.5 max-w-[38ch] text-[15px] leading-[1.5] text-ink-soft">{M.report.subtitle}</p>
 
-      <div className="mt-7">
+      <section className="mt-7" aria-labelledby="ai-title">
+        <div className="mb-2.5 flex items-baseline justify-between gap-3">
+          <h2 id="ai-title" className="text-[17px] font-semibold">
+            {M.ai.title}
+          </h2>
+          {aiResult?.skinAge != null && <span className="text-[13px] text-ink-soft">{M.ai.skinAge(aiResult.skinAge)}</span>}
+        </div>
+        {state.ai.status === "done" && aiConcerns.length > 0 ? (
+          <Strip
+            pads={aiConcerns.map((c) => ({
+              id: `ai:${c.id}`,
+              intensity: c.severity,
+              label: M.ai.names[c.id],
+              sublabel: M.report.levels[c.level],
+              ramp: AI_RAMPS[c.id],
+            }))}
+            develop={develop}
+            selected={selected}
+            onSelect={select}
+          />
+        ) : state.ai.status === "pending" ? (
+          <>
+            <Strip
+              pads={(["acne", "wrinkles", "pores", "texture"] as const).map((id) => ({
+                id: `ai:${id}`,
+                intensity: 0,
+                label: M.ai.names[id],
+                ramp: AI_RAMPS[id],
+              }))}
+              pending
+            />
+            <p className="mt-2 text-[14px] text-ink-soft" aria-live="polite">
+              {M.ai.pending}
+            </p>
+          </>
+        ) : (
+          <p className="rounded-[var(--radius-card)] bg-strip-raised px-4 py-3.5 text-[15px] leading-[1.5] text-ink-soft ring-1 ring-rule">
+            {aiFailMessage ?? M.ai.off}
+          </p>
+        )}
+      </section>
+
+      <section className="mt-6" aria-labelledby="phone-title">
+        <h2 id="phone-title" className="mb-2.5 text-[17px] font-semibold">
+          {M.report.phoneTitle}
+        </h2>
         <Strip
           pads={a.readings.map((r) => ({
-            id: r.id,
+            id: `m:${r.id}`,
             intensity: r.intensity,
             label: M.report.measures[r.id].name,
             sublabel: levelWord(r),
+            ramp: RAMPS[r.id],
           }))}
           develop={develop}
           selected={selected}
-          onSelect={(id) => {
-            setSelected(id);
-            setShowZones(true);
-          }}
+          onSelect={select}
         />
-      </div>
+      </section>
 
-      {/* The meaning of the tapped pad sits right under the strip, before the photo. */}
+      {/* The meaning of the tapped pad sits right under the strips, before the photo. */}
       <div className="mt-4">
-        <KeyScale
-          key={selected}
-          reading={selectedReading}
-          active
-          delay={selected === strongest ? 0.9 : 0}
-          onSelect={() => setShowZones(true)}
-        />
+        {selectedAi ? (
+          <KeyCard
+            key={selected}
+            name={M.ai.names[selectedAi.id]}
+            levelWord={M.report.levels[selectedAi.level]}
+            intensity={selectedAi.severity}
+            chips={rampChips(AI_RAMPS[selectedAi.id])}
+            ends={M.ai.measures[selectedAi.id]?.ends ?? ["Low", "High"]}
+            sentence={
+              M.ai.measures[selectedAi.id]?.say[selectedAi.level] ??
+              `${M.report.levels[selectedAi.level]}: ${M.ai.names[selectedAi.id].toLowerCase()}.`
+            }
+            where={selectedAi.maskUrl ? M.ai.measures[selectedAi.id]?.where : undefined}
+            onSelect={() => setShowZones(true)}
+          />
+        ) : selectedReading ? (
+          <KeyScale key={selected} reading={selectedReading} delay={0.9} onSelect={() => setShowZones(true)} />
+        ) : null}
       </div>
 
       <div className="mt-6">
@@ -74,7 +158,8 @@ export function Report() {
           photoUrl={a.photoUrl}
           zones={a.zones}
           size={a.size}
-          measure={selected}
+          measure={selectedReading?.id ?? null}
+          maskUrl={selectedAi?.maskUrl ?? null}
           show={showZones}
           spots={a.spots}
         />

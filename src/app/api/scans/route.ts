@@ -23,6 +23,7 @@ export async function POST(req: Request) {
       id: scan.id,
       readings: scan.readings,
       tone: scan.tone,
+      ai: scan.ai ?? null,
       quality: scan.quality,
       device_os: scan.device.os,
       device_browser: scan.device.browser,

@@ -6,6 +6,7 @@ import { M } from "@/config/messages";
 import { deviceInfo } from "@/lib/env/camera-support";
 import { QUIZ_ORDER, firstMissing } from "@/lib/rules/quiz";
 import type { Goal, QuizAnswers } from "@/lib/rules/types";
+import { aiNumbers } from "@/lib/ai/numbers";
 import { readUtm } from "@/lib/utm";
 import { Button } from "../ui/Button";
 import { useFlow } from "./flow";
@@ -39,6 +40,7 @@ export function Quiz() {
           id: scanId,
           readings: a.readings,
           tone: a.tone,
+          ai: aiNumbers(state.ai),
           quality: state.captured?.quality ?? {},
           device: deviceInfo(navigator.userAgent),
           utm: readUtm(),

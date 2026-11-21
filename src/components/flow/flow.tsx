@@ -3,6 +3,7 @@
 import { createContext, useContext, type Dispatch } from "react";
 import { DEMO_READINGS, DEMO_TONE } from "@/lib/demo";
 import { WORST_READINGS, type DataVariant } from "@/lib/dev/data-variant";
+import type { AiErrorCode, AiOutcome, AiResult } from "@/lib/ai/types";
 import type { CameraProblemKind } from "@/lib/env/camera-support";
 import type { QuizAnswers } from "@/lib/rules/types";
 import type { FrameAnalysis } from "@/lib/vision/analyze-frame";
@@ -25,7 +26,16 @@ export type FlowState = {
   debug: boolean;
   /** Dev-only break-ui data variant. Always "demo" in production. */
   data: DataVariant;
+  /** The person chose the AI check (photo sent for acne, wrinkles, pores). */
+  aiConsent: boolean;
+  ai: AiState;
 };
+
+export type AiState =
+  | { status: "off" }
+  | { status: "pending"; token: number }
+  | { status: "done"; result: AiResult }
+  | { status: "failed"; error: AiErrorCode };
 
 export type FlowAction =
   | { type: "go"; step: Step; dir?: 1 | -1 }
@@ -36,7 +46,10 @@ export type FlowAction =
   | { type: "ordered"; id: string }
   | { type: "retake" }
   | { type: "flags"; demo: boolean; debug: boolean; data: DataVariant }
-  | { type: "data"; data: DataVariant };
+  | { type: "data"; data: DataVariant }
+  | { type: "aiConsent"; consent: boolean }
+  | { type: "aiStart"; token: number }
+  | { type: "aiDone"; token: number; outcome: AiOutcome };
 
 export const initialFlow: FlowState = {
   step: "welcome",
@@ -50,6 +63,8 @@ export const initialFlow: FlowState = {
   demo: false,
   debug: false,
   data: "demo",
+  aiConsent: false,
+  ai: { status: "off" },
 };
 
 export function flowReducer(s: FlowState, a: FlowAction): FlowState {
@@ -69,7 +84,15 @@ export function flowReducer(s: FlowState, a: FlowAction): FlowState {
     case "retake":
       if (s.analysis?.photoUrl) URL.revokeObjectURL(s.analysis.photoUrl);
       s.captured?.bitmap?.close();
-      return { ...s, captured: null, analysis: null, scanId: null, orderId: null, step: "camera", dir: -1 };
+      return { ...s, captured: null, analysis: null, scanId: null, orderId: null, ai: { status: "off" }, step: "camera", dir: -1 };
+    case "aiConsent":
+      return { ...s, aiConsent: a.consent };
+    case "aiStart":
+      return { ...s, ai: { status: "pending", token: a.token } };
+    case "aiDone":
+      // A result for an earlier scan (before a retake) is dropped.
+      if (s.ai.status !== "pending" || s.ai.token !== a.token) return s;
+      return { ...s, ai: a.outcome.ok ? { status: "done", result: a.outcome.result } : { status: "failed", error: a.outcome.error } };
     case "flags":
       return { ...s, demo: a.demo, debug: a.debug, data: a.data };
     case "data": {

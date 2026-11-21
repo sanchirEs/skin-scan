@@ -1,10 +1,9 @@
 "use client";
 
 import { motion, useReducedMotion } from "motion/react";
-import type { MeasureId } from "@/lib/analysis/types";
-import { rampColor } from "./colors";
+import { mixRamp } from "./colors";
 
-export type Pad = { id: MeasureId; intensity: number; label: string; sublabel?: string };
+export type Pad = { id: string; intensity: number; label: string; sublabel?: string; ramp: [string, string] };
 
 /**
  * The reagent strip: four square pads on a white plastic strip. With `develop`,
@@ -19,8 +18,8 @@ export function Strip({
 }: {
   pads: Pad[];
   develop?: boolean;
-  selected?: MeasureId | null;
-  onSelect?: (id: MeasureId) => void;
+  selected?: string | null;
+  onSelect?: (id: string) => void;
   pending?: boolean;
 }) {
   const reduce = useReducedMotion();
@@ -28,7 +27,7 @@ export function Strip({
     <div className="rounded-[var(--radius-strip)] bg-flash p-3 shadow-[0_1px_0_var(--rule),0_10px_30px_-18px_rgb(21_25_27/0.35)] ring-1 ring-rule">
       <div className="grid grid-cols-4 gap-2.5">
         {pads.map((pad, i) => {
-          const color = rampColor(pad.id, pad.intensity / 100);
+          const color = mixRamp(pad.ramp, pad.intensity / 100);
           const isSelected = selected === pad.id;
           const swatch = pending ? (
             <motion.span

@@ -19,6 +19,8 @@ export type FrameAnalysis =
       photoUrl: string;
       zones: Record<ZoneId, Mask>;
       size: { w: number; h: number };
+      /** Higher-resolution crop of the same region, for the AI check only. Memory only. */
+      uploadBlob: Blob | null;
     }
   | { ok: false; reason: "no-face" | "too-few-pixels" | "overexposed" | "underexposed" };
 
@@ -65,6 +67,15 @@ export async function analyzeFrame(bitmap: ImageBitmap): Promise<FrameAnalysis> 
   const blob = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("photo encode failed"))), "image/jpeg", 0.9),
   );
+  // Same region at up to 1280 px wide (at least 480, the AI service's minimum).
+  const uw = Math.round(Math.min(1280, Math.max(480, cw)));
+  const uh = Math.round(ch * (uw / cw));
+  const upload = document.createElement("canvas");
+  upload.width = uw;
+  upload.height = uh;
+  upload.getContext("2d")!.drawImage(bitmap, cx, cy, cw, ch, 0, 0, uw, uh);
+  const uploadBlob = await new Promise<Blob | null>((resolve) => upload.toBlob(resolve, "image/jpeg", 0.9));
+
   const { readings, tone } = toReadings(measured.raw);
   return {
     ok: true,
@@ -75,5 +86,6 @@ export async function analyzeFrame(bitmap: ImageBitmap): Promise<FrameAnalysis> 
     photoUrl: URL.createObjectURL(blob),
     zones,
     size: { w, h },
+    uploadBlob,
   };
 }

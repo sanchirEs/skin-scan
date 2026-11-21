@@ -27,6 +27,7 @@ create table if not exists public.scans (
   created_at timestamptz not null default now(),
   readings jsonb not null,
   tone jsonb not null,
+  ai jsonb,                     -- AI check numbers (id, severity, level); never images
   quality jsonb not null,
   device_os text,
   device_browser text,

@@ -12,10 +12,11 @@ export function useRoutine() {
   const { state } = useFlow();
   return useMemo(() => {
     if (!state.analysis || !state.quiz) return null;
-    const concerns = deriveConcerns(state.analysis.readings, state.quiz);
+    const ai = state.ai.status === "done" ? state.ai.result.concerns : [];
+    const concerns = deriveConcerns(state.analysis.readings, state.quiz, ai);
     const routine = buildRoutine(concerns, state.quiz, catalogFor(state.data));
     const products: Product[] = [];
     for (const s of routine.slots) if (s.product && !products.some((p) => p.id === s.product!.id)) products.push(s.product);
     return { concerns, routine, products };
-  }, [state.analysis, state.quiz, state.data]);
+  }, [state.analysis, state.quiz, state.data, state.ai]);
 }

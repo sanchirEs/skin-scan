@@ -2,18 +2,20 @@
 
 import Link from "next/link";
 import { M } from "@/config/messages";
-import { keyChips } from "../strip/colors";
+import { RAMPS, keyChips } from "../strip/colors";
 import { Strip } from "../strip/Strip";
 import { Button } from "../ui/Button";
 import { useFlow } from "./flow";
 
 // Illustrative values for the example strip; labelled as an example on screen.
-const EXAMPLE = [
-  { id: "redness" as const, intensity: 38, label: M.report.measures.redness.name },
-  { id: "evenness" as const, intensity: 55, label: M.report.measures.evenness.name },
-  { id: "darkCircles" as const, intensity: 24, label: M.report.measures.darkCircles.name },
-  { id: "shine" as const, intensity: 66, label: M.report.measures.shine.name },
-];
+const EXAMPLE = (
+  [
+    ["redness", 38],
+    ["evenness", 55],
+    ["darkCircles", 24],
+    ["shine", 66],
+  ] as const
+).map(([id, intensity]) => ({ id, intensity, label: M.report.measures[id].name, ramp: RAMPS[id] }));
 
 export function Welcome() {
   const { dispatch } = useFlow();

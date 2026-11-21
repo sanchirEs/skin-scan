@@ -5,6 +5,7 @@ import { useId, useMemo, useState, type ReactNode } from "react";
 import { BRAND, formatPrice } from "@/config/brand";
 import { M } from "@/config/messages";
 import type { QuizAnswers } from "@/lib/rules/types";
+import { aiNumbers } from "@/lib/ai/numbers";
 import { readUtm } from "@/lib/utm";
 import { useFlow } from "../flow/flow";
 import { useRoutine } from "../report/useRoutine";
@@ -116,7 +117,7 @@ export function OrderForm() {
           note: note.trim() || undefined,
           consent: true,
           items: products.filter((p) => lines[p.id]?.on).map((p) => ({ productId: p.id, qty: lines[p.id].qty })),
-          scanScores: { readings: state.analysis!.readings, tone: state.analysis!.tone },
+          scanScores: { readings: state.analysis!.readings, tone: state.analysis!.tone, ai: aiNumbers(state.ai) },
           quiz,
           scanId: state.scanId ?? undefined,
           utm: readUtm(),

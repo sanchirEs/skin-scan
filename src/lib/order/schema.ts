@@ -1,6 +1,7 @@
 // Request schemas shared by the client and the API routes. Top-level objects
 // are strict, so a stray image field can never reach the database.
 import { z } from "zod";
+import { AI_CONCERN_IDS } from "../ai/types";
 import type { Product } from "../rules/types";
 
 const ReadingSchema = z.strictObject({
@@ -14,6 +15,18 @@ const ToneSchema = z.strictObject({
   ita: z.number().min(-90).max(90),
   category: z.enum(["very-light", "light", "intermediate", "tan", "brown", "dark"]),
 });
+
+// AI findings travel as numbers only: no mask URLs, no images.
+const AiScoresSchema = z
+  .array(
+    z.strictObject({
+      id: z.enum(AI_CONCERN_IDS),
+      severity: z.number().min(0).max(100),
+      level: z.enum(["none", "mild", "moderate", "high"]),
+    }),
+  )
+  .max(12)
+  .optional();
 
 const UtmSchema = z
   .strictObject({
@@ -49,7 +62,7 @@ export const OrderRequest = z.strictObject({
     .array(z.strictObject({ productId: z.string().max(60), qty: z.number().int().min(1).max(9) }))
     .min(1)
     .max(10),
-  scanScores: z.strictObject({ readings: z.array(ReadingSchema).max(4), tone: ToneSchema }),
+  scanScores: z.strictObject({ readings: z.array(ReadingSchema).max(4), tone: ToneSchema, ai: AiScoresSchema }),
   quiz: QuizSchema,
   scanId: z.uuid().optional(),
   utm: UtmSchema,
@@ -60,6 +73,7 @@ export const ScanRequest = z.strictObject({
   id: z.uuid(),
   readings: z.array(ReadingSchema).max(4),
   tone: ToneSchema,
+  ai: AiScoresSchema,
   quality: z.record(z.string().max(40), z.number()),
   device: z.strictObject({ os: z.string().max(40), browser: z.string().max(40) }),
   utm: UtmSchema,

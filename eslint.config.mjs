@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Separate Railway service with its own lint and tests.
+    "services/**",
+    // MediaPipe runtime copied from node_modules at install.
+    "public/mediapipe/**",
   ]),
 ]);
 

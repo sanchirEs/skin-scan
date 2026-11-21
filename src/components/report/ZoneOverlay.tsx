@@ -21,13 +21,17 @@ export function ZoneOverlay({
   zones,
   size,
   measure,
+  maskUrl = null,
   show,
   spots,
 }: {
   photoUrl: string;
   zones: Record<ZoneId, Mask>;
   size: { w: number; h: number };
-  measure: MeasureId;
+  /** On-phone reading whose zones to draw, or null when an AI finding is selected. */
+  measure: MeasureId | null;
+  /** The AI provider's map of where it found the concern. Shown only, never stored. */
+  maskUrl?: string | null;
   show: boolean;
   spots: Pt[];
 }) {
@@ -38,6 +42,8 @@ export function ZoneOverlay({
     if (!canvas) return;
     const ctx = canvas.getContext("2d")!;
     const { w, h } = size;
+    ctx.clearRect(0, 0, w, h);
+    if (!measure) return;
     const img = ctx.createImageData(w, h);
     const [r, g, b] = rgb(RAMPS[measure][1]);
     for (const id of ZONES_FOR[measure]) {
@@ -74,6 +80,15 @@ export function ZoneOverlay({
       <div className="absolute inset-0 -scale-x-100">
         {/* eslint-disable-next-line @next/next/no-img-element -- local object URL, never uploaded */}
         <img src={photoUrl} alt="Your scan, shown as in a mirror" className="h-full w-full object-cover" />
+        {maskUrl && (
+          // eslint-disable-next-line @next/next/no-img-element -- provider mask, short-lived URL
+          <img
+            src={maskUrl}
+            alt=""
+            aria-hidden
+            className={`absolute inset-0 h-full w-full object-fill transition-opacity duration-300 ${show ? "opacity-90" : "opacity-0"}`}
+          />
+        )}
         <canvas
           ref={canvasRef}
           width={size.w}

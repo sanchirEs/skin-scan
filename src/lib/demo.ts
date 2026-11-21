@@ -1,6 +1,7 @@
 // Dev-only demo path (?demo=1): walks the flow without a camera using fixed,
 // clearly illustrative readings. Disabled in production unless explicitly enabled.
 import type { Analysis } from "@/components/flow/flow";
+import type { AiResult } from "./ai/types";
 import { makeFixtureLandmarks } from "./analysis/fixtures";
 import { buildZones } from "./analysis/zones";
 
@@ -14,6 +15,18 @@ export const DEMO_READINGS: Analysis["readings"] = [
   { id: "shine", intensity: 71, level: "high", label: "shiny" },
 ];
 export const DEMO_TONE: Analysis["tone"] = { ita: 31.2, category: "intermediate" };
+
+/** Illustrative AI result for demo mode only. */
+export const DEMO_AI: AiResult = {
+  provider: "demo",
+  skinAge: 29,
+  concerns: [
+    { id: "acne", score: 58, severity: 42, level: "mild", maskUrl: null, regions: [] },
+    { id: "wrinkles", score: 84, severity: 16, level: "none", maskUrl: null, regions: [] },
+    { id: "pores", score: 41, severity: 59, level: "moderate", maskUrl: null, regions: [] },
+    { id: "texture", score: 63, severity: 37, level: "mild", maskUrl: null, regions: [] },
+  ],
+};
 
 export async function demoAnalysis(): Promise<Analysis> {
   const size = 400;
@@ -60,5 +73,6 @@ export async function demoAnalysis(): Promise<Analysis> {
     photoUrl: URL.createObjectURL(blob),
     zones,
     size: { w: size, h: size },
+    uploadBlob: null,
   };
 }

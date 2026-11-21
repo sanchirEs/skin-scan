@@ -28,8 +28,25 @@ export function Tips() {
         </ul>
       </div>
       <div className="flex flex-col gap-2 px-5 pt-6 pb-[max(20px,env(safe-area-inset-bottom))]">
-        <Button className="w-full" onClick={() => dispatch({ type: "go", step: "camera" })}>
-          {M.tips.start}
+        <p className="mb-1.5 text-[14px] leading-snug text-ink-soft">{M.tips.aiNotice}</p>
+        <Button
+          className="w-full"
+          onClick={() => {
+            dispatch({ type: "aiConsent", consent: true });
+            dispatch({ type: "go", step: "camera" });
+          }}
+        >
+          {M.tips.startAi}
+        </Button>
+        <Button
+          variant="secondary"
+          className="w-full"
+          onClick={() => {
+            dispatch({ type: "aiConsent", consent: false });
+            dispatch({ type: "go", step: "camera" });
+          }}
+        >
+          {M.tips.startLocal}
         </Button>
         <Button variant="quiet" onClick={() => dispatch({ type: "go", step: "welcome", dir: -1 })}>
           {M.tips.back}
