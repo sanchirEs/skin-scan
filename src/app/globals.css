@@ -1,0 +1,122 @@
+@import "tailwindcss";
+
+/* Test strip world: strip white ground, ink, one vial-cap teal for the shell.
+   Colour otherwise lives only inside pads, keys and the photo. Light only:
+   the screen is the light source during capture. */
+:root {
+  --strip: #f3f5f2;
+  --strip-raised: #fbfcfa;
+  --flash: #ffffff;
+  --ink: #15191b;
+  --ink-soft: #4a5257;
+  --ink-faint: #6b7378;
+  --rule: #d5dad6;
+  --cap: #0e4d48;
+  --cap-deep: #0a3935;
+  --cap-ink: #f3f5f2;
+  --cap-tint: #dceae7;
+  --stamp: #9d2a2a;
+
+  --red-0: #f7e1e1;
+  --red-1: #c2263d;
+  --even-0: #efe6d8;
+  --even-1: #6b4a2b;
+  --dark-0: #e9e6ef;
+  --dark-1: #4b3f63;
+  --shine-0: #e4e7e8;
+  --shine-1: #8fd3dd;
+
+  --tone-very-light: #f1d3c2;
+  --tone-light: #e5b89c;
+  --tone-intermediate: #c99674;
+  --tone-tan: #a97452;
+  --tone-brown: #7a4e33;
+  --tone-dark: #4a2e20;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-strip: var(--strip);
+  --color-strip-raised: var(--strip-raised);
+  --color-flash: var(--flash);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-rule: var(--rule);
+  --color-cap: var(--cap);
+  --color-cap-deep: var(--cap-deep);
+  --color-cap-ink: var(--cap-ink);
+  --color-cap-tint: var(--cap-tint);
+  --color-stamp: var(--stamp);
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --radius-strip: 10px;
+  --radius-pad: 4px;
+  --radius-card: 14px;
+  --radius-field: 10px;
+  --ease-out: var(--ease-out);
+}
+
+html {
+  background: var(--strip);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--strip);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 0;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--cap);
+  color: var(--cap-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--cap);
+  outline-offset: 3px;
+}
+
+input,
+textarea {
+  caret-color: var(--cap);
+}
+
+a {
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
+}
+
+/* Width axis carries the type voices: expanded headings, condensed numerals. */
+.type-display {
+  font-stretch: 116%;
+  font-weight: 640;
+  letter-spacing: -0.025em;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+.type-numeral {
+  font-stretch: 72%;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

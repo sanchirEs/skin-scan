@@ -1,0 +1,10 @@
+# Rebuilt on Vercel (npm install runs scripts/fetch-mediapipe.mjs).
+.next
+node_modules
+public/mediapipe
+# Local notes and tooling, not part of the site.
+.impeccable
+.superpowers
+.claude
+docs
+*.log
