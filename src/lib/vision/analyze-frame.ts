@@ -1,12 +1,18 @@
-// Full-resolution analysis of the captured frame, entirely on the device.
+// Full-resolution analysis of the captured frames, entirely on the device.
+import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
 import type { Mask, Pt } from "../analysis/geometry";
 import { measure } from "../analysis/measure";
-import { toReadings } from "../analysis/readings";
+import { combineSides, sideIntensities, toReadings, type SideIntensities } from "../analysis/readings";
 import type { RawMetrics, Reading, Tone } from "../analysis/types";
-import { FACE_OVAL, buildZones, type ZoneId } from "../analysis/zones";
+import { FACE_OVAL, buildZones, facingCheek, type ZoneId } from "../analysis/zones";
+import { withTimeout } from "../timeout";
 import { loadLandmarker } from "./landmarker";
 
 const WORK_WIDTH = 480;
+/** A side photo that takes longer than this is left out; the front result never waits on it. */
+const SIDE_TIMEOUT_MS = 10_000;
+
+export type SidePhotos<T> = { left?: T; right?: T };
 
 export type FrameAnalysis =
   | {
@@ -21,15 +27,13 @@ export type FrameAnalysis =
       size: { w: number; h: number };
       /** Higher-resolution crop of the same region, for the AI check only. Memory only. */
       uploadBlob: Blob | null;
+      /** The same kind of crop of each side photo that measured, for the AI check only. Memory only. */
+      sideBlobs: SidePhotos<Blob>;
     }
   | { ok: false; reason: "no-face" | "too-few-pixels" | "overexposed" | "underexposed" };
 
-export async function analyzeFrame(bitmap: ImageBitmap): Promise<FrameAnalysis> {
-  const landmarker = await loadLandmarker("IMAGE");
-  const res = landmarker.detect(bitmap);
-  if (!res.faceLandmarks.length) return { ok: false, reason: "no-face" };
-  const lm = res.faceLandmarks[0];
-
+/** The face region of a frame (with a margin), drawn at WORK_WIDTH, and the landmarks mapped into it. */
+function cropFace(bitmap: ImageBitmap, lm: NormalizedLandmark[]) {
   const W = bitmap.width;
   const H = bitmap.height;
   let x0 = W;
@@ -60,6 +64,26 @@ export async function analyzeFrame(bitmap: ImageBitmap): Promise<FrameAnalysis> 
   const img = ctx.getImageData(0, 0, w, h);
 
   const pts: Pt[] = lm.map((p) => ({ x: (p.x * W - cx) * scale, y: (p.y * H - cy) * scale }));
+  return { region: { cx, cy, cw, ch }, canvas, img, pts, w, h };
+}
+
+/** Same region at up to 1280 px wide (at least 480, the AI service's minimum). */
+function uploadCrop(bitmap: ImageBitmap, r: { cx: number; cy: number; cw: number; ch: number }): Promise<Blob | null> {
+  const uw = Math.round(Math.min(1280, Math.max(480, r.cw)));
+  const uh = Math.round(r.ch * (uw / r.cw));
+  const upload = document.createElement("canvas");
+  upload.width = uw;
+  upload.height = uh;
+  upload.getContext("2d")!.drawImage(bitmap, r.cx, r.cy, r.cw, r.ch, 0, 0, uw, uh);
+  return new Promise<Blob | null>((resolve) => upload.toBlob(resolve, "image/jpeg", 0.9));
+}
+
+export async function analyzeFrame(bitmap: ImageBitmap): Promise<FrameAnalysis> {
+  const landmarker = await loadLandmarker("IMAGE");
+  const res = landmarker.detect(bitmap);
+  if (!res.faceLandmarks.length) return { ok: false, reason: "no-face" };
+
+  const { region, canvas, img, pts, w, h } = cropFace(bitmap, res.faceLandmarks[0]);
   const zones = buildZones(pts, w, h);
   const measured = measure({ width: w, height: h, data: img.data }, zones);
   if (!measured.ok) return { ok: false, reason: measured.reason };
@@ -67,14 +91,7 @@ export async function analyzeFrame(bitmap: ImageBitmap): Promise<FrameAnalysis> 
   const blob = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("photo encode failed"))), "image/jpeg", 0.9),
   );
-  // Same region at up to 1280 px wide (at least 480, the AI service's minimum).
-  const uw = Math.round(Math.min(1280, Math.max(480, cw)));
-  const uh = Math.round(ch * (uw / cw));
-  const upload = document.createElement("canvas");
-  upload.width = uw;
-  upload.height = uh;
-  upload.getContext("2d")!.drawImage(bitmap, cx, cy, cw, ch, 0, 0, uw, uh);
-  const uploadBlob = await new Promise<Blob | null>((resolve) => upload.toBlob(resolve, "image/jpeg", 0.9));
+  const uploadBlob = await uploadCrop(bitmap, region);
 
   const { readings, tone } = toReadings(measured.raw);
   return {
@@ -87,5 +104,46 @@ export async function analyzeFrame(bitmap: ImageBitmap): Promise<FrameAnalysis> 
     zones,
     size: { w, h },
     uploadBlob,
+    sideBlobs: {},
   };
+}
+
+export type SideAnalysis = { ok: true; intensities: SideIntensities; uploadBlob: Blob | null } | { ok: false };
+
+/**
+ * A side photo: only the cheek facing the camera is measured, and only for
+ * redness and evenness (spots). The rest of the reading stays front-only.
+ */
+export async function analyzeSide(bitmap: ImageBitmap): Promise<SideAnalysis> {
+  const landmarker = await loadLandmarker("IMAGE");
+  const res = landmarker.detect(bitmap);
+  if (!res.faceLandmarks.length) return { ok: false };
+
+  const { region, img, pts, w, h } = cropFace(bitmap, res.faceLandmarks[0]);
+  const zones = buildZones(pts, w, h);
+  const measured = measure({ width: w, height: h, data: img.data }, zones, { only: [facingCheek(zones)] });
+  if (!measured.ok) return { ok: false };
+  return { ok: true, intensities: sideIntensities(measured.raw), uploadBlob: await uploadCrop(bitmap, region) };
+}
+
+/** Adds what the side photos show to a front analysis. A side that fails is left out, silently. */
+export async function addSides(
+  front: Extract<FrameAnalysis, { ok: true }>,
+  sides: SidePhotos<ImageBitmap>,
+): Promise<Extract<FrameAnalysis, { ok: true }>> {
+  const found: SideIntensities[] = [];
+  const sideBlobs: SidePhotos<Blob> = {};
+  for (const key of ["left", "right"] as const) {
+    const bitmap = sides[key];
+    if (!bitmap) continue;
+    try {
+      const side = await withTimeout(analyzeSide(bitmap), SIDE_TIMEOUT_MS);
+      if (!side.ok) continue;
+      found.push(side.intensities);
+      if (side.uploadBlob) sideBlobs[key] = side.uploadBlob;
+    } catch {
+      // A side photo is a bonus: the front reading stands on its own.
+    }
+  }
+  return { ...front, readings: combineSides(front.readings, found), sideBlobs };
 }

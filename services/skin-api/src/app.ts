@@ -2,9 +2,10 @@ import { Hono } from "hono";
 import type { Config } from "./config.js";
 import { originMatcher } from "./cors.js";
 import { ApiError } from "./errors.js";
+import { detectImageType } from "./image.js";
 import { consoleLogger, type Logger } from "./log.js";
 import { createRateLimiter } from "./rateLimit.js";
-import type { ImageType, SkinProvider } from "./types.js";
+import type { AnalyzeInput, SkinProvider } from "./types.js";
 
 export interface AppOptions {
   config: Config;
@@ -13,15 +14,11 @@ export interface AppOptions {
   now?: () => number;
 }
 
-const MAGIC: Record<ImageType, number[]> = {
-  "image/jpeg": [0xff, 0xd8, 0xff],
-  "image/png": [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
-};
+type Photos = Pick<AnalyzeInput, "image" | "contentType" | "sides">;
 
-function imageType(header: string | undefined): ImageType | null {
-  const type = header?.split(";")[0]?.trim().toLowerCase();
-  return type === "image/jpeg" || type === "image/png" ? type : null;
-}
+const MULTIPART_FIELDS = new Set(["image", "left", "right"]);
+/** Room for multipart boundaries and part headers on top of three photos. */
+const MULTIPART_OVERHEAD = 64 * 1024;
 
 /** Read the body into memory, stopping as soon as it exceeds `max` bytes. */
 async function readBody(req: Request, max: number): Promise<Uint8Array<ArrayBuffer>> {
@@ -41,6 +38,48 @@ async function readBody(req: Request, max: number): Promise<Uint8Array<ArrayBuff
     chunks.push(value);
   }
   return Buffer.concat(chunks);
+}
+
+/** Raw body: Content-Type image/jpeg or image/png, and the bytes must really be that. */
+async function readRawPhoto(req: Request, mediaType: string | undefined, max: number): Promise<Photos> {
+  const contentType = mediaType === "image/jpeg" || mediaType === "image/png" ? mediaType : null;
+  if (!contentType) {
+    throw new ApiError("bad_image", "Content-Type must be image/jpeg, image/png or multipart/form-data.");
+  }
+  const image = await readBody(req, max);
+  if (image.byteLength === 0) throw new ApiError("bad_image", "The request body is empty.");
+  if (detectImageType(image) !== contentType) {
+    throw new ApiError("bad_image", `The body is not a ${contentType === "image/png" ? "PNG" : "JPEG"} image.`);
+  }
+  return { image, contentType };
+}
+
+/** multipart/form-data: file "image" (front, required) plus optional "left" / "right"; each JPEG or PNG, <= max bytes. */
+async function readMultipartPhotos(req: Request, max: number): Promise<Photos> {
+  const raw = await readBody(req, 3 * max + MULTIPART_OVERHEAD);
+  let form: FormData;
+  try {
+    form = await new Response(raw, { headers: { "content-type": req.headers.get("content-type") ?? "" } }).formData();
+  } catch {
+    throw new ApiError("bad_image", "The multipart body could not be read.");
+  }
+
+  const files = new Map<string, Uint8Array<ArrayBuffer>>();
+  for (const [name, value] of form) {
+    if (!MULTIPART_FIELDS.has(name) || files.has(name) || typeof value === "string") {
+      throw new ApiError("bad_image", 'Send an "image" photo file, plus optional "left" and "right" photo files, nothing else.');
+    }
+    if (value.size > max) throw new ApiError("too_large", `The "${name}" photo is too large.`);
+    const bytes = new Uint8Array(await value.arrayBuffer());
+    if (!detectImageType(bytes)) throw new ApiError("bad_image", `The "${name}" file is not a JPEG or PNG image.`);
+    files.set(name, bytes);
+  }
+
+  const image = files.get("image");
+  if (!image) throw new ApiError("bad_image", 'The "image" photo is missing.');
+  const left = files.get("left");
+  const right = files.get("right");
+  return { image, contentType: detectImageType(image)!, sides: left || right ? { left, right } : undefined };
 }
 
 export function createApp({ config, provider, logger = consoleLogger, now = Date.now }: AppOptions) {
@@ -81,23 +120,30 @@ export function createApp({ config, provider, logger = consoleLogger, now = Date
     }
     if (!provider.configured) throw new ApiError("not_configured");
 
-    const contentType = imageType(c.req.header("content-type"));
-    if (!contentType) throw new ApiError("bad_image", "Content-Type must be image/jpeg or image/png.");
-    const image = await readBody(c.req.raw, config.maxImageBytes);
-    if (image.byteLength === 0) throw new ApiError("bad_image", "The request body is empty.");
-    if (!MAGIC[contentType].every((byte, i) => image[i] === byte)) {
-      throw new ApiError("bad_image", `The body is not a ${contentType === "image/png" ? "PNG" : "JPEG"} image.`);
-    }
+    const mediaType = c.req.header("content-type")?.split(";")[0]?.trim().toLowerCase();
+    const photos =
+      mediaType === "multipart/form-data"
+        ? await readMultipartPhotos(c.req.raw, config.maxImageBytes)
+        : await readRawPhoto(c.req.raw, mediaType, config.maxImageBytes);
 
     const started = now();
     try {
-      const result = await provider.analyze({ image, contentType, concerns: config.concerns });
-      logger.info("analyze_ok", { provider: provider.name, bytes: image.byteLength, ms: now() - started });
+      const result = await provider.analyze({ ...photos, concerns: config.concerns });
+      logger.info("analyze_ok", {
+        provider: provider.name,
+        bytes: photos.image.byteLength,
+        usedSides: result.usedSides,
+        ms: now() - started,
+      });
       return c.json(result);
     } catch (err) {
-      if (err instanceof ApiError) throw err;
-      logger.error("provider_crashed", { provider: provider.name, error: err instanceof Error ? err.name : "unknown" });
-      throw new ApiError("provider_error");
+      // Exactly one line per provider failure: provider, step and the provider's status/code. Never the key or image.
+      const failure =
+        err instanceof ApiError
+          ? err
+          : new ApiError("provider_error", undefined, { step: "unknown", providerCode: err instanceof Error ? err.name : "unknown" });
+      logger.warn("provider_failed", { provider: provider.name, code: failure.code, ...failure.detail, ms: now() - started });
+      return c.json(failure.toJSON(), failure.status);
     }
   });
 
@@ -105,7 +151,8 @@ export function createApp({ config, provider, logger = consoleLogger, now = Date
 
   app.onError((err, c) => {
     if (err instanceof ApiError) {
-      if (err.status >= 500) logger.warn("request_failed", { path: c.req.path, code: err.code });
+      // Rejected before reaching the provider (bad input, origin, rate limit, not configured).
+      logger.info("request_rejected", { path: c.req.path, code: err.code, status: err.status });
       return c.json(err.toJSON(), err.status);
     }
     logger.error("unexpected_error", { path: c.req.path, error: err.name });

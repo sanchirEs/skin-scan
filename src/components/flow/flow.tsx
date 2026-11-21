@@ -6,11 +6,23 @@ import { WORST_READINGS, type DataVariant } from "@/lib/dev/data-variant";
 import type { AiErrorCode, AiOutcome, AiResult } from "@/lib/ai/types";
 import type { CameraProblemKind } from "@/lib/env/camera-support";
 import type { QuizAnswers } from "@/lib/rules/types";
-import type { FrameAnalysis } from "@/lib/vision/analyze-frame";
+import type { FrameAnalysis, SidePhotos } from "@/lib/vision/analyze-frame";
 
 export type Step = "welcome" | "tips" | "camera" | "analyzing" | "quiz" | "report" | "order" | "done";
 export type Analysis = Extract<FrameAnalysis, { ok: true }>;
-export type Captured = { bitmap: ImageBitmap | null; quality: Record<string, number> };
+export type Captured = {
+  bitmap: ImageBitmap | null;
+  quality: Record<string, number>;
+  /** Guided side photos, when taken. Labels follow the ASSUMPTION in lib/analysis/sides.ts. */
+  sides: SidePhotos<ImageBitmap>;
+};
+
+/** Frees the captured frames. Safe to call twice (close() is idempotent). */
+function closeCaptured(c: Captured | null) {
+  c?.bitmap?.close();
+  c?.sides.left?.close();
+  c?.sides.right?.close();
+}
 
 export type FlowState = {
   step: Step;
@@ -72,8 +84,11 @@ export function flowReducer(s: FlowState, a: FlowAction): FlowState {
     case "go":
       return { ...s, step: a.step, dir: a.dir ?? 1, problem: a.step === "camera" ? null : s.problem };
     case "captured":
+      if (s.captured !== a.captured) closeCaptured(s.captured);
       return { ...s, captured: a.captured, step: "analyzing", dir: 1 };
     case "analyzed":
+      // The frames are not needed once read. The object stays, so effects keyed on it do not re-run.
+      closeCaptured(s.captured);
       return { ...s, analysis: a.analysis, step: "quiz", dir: 1 };
     case "quizDone":
       return { ...s, quiz: a.quiz, scanId: a.scanId, step: "report", dir: 1 };
@@ -83,7 +98,7 @@ export function flowReducer(s: FlowState, a: FlowAction): FlowState {
       return { ...s, orderId: a.id, step: "done", dir: 1 };
     case "retake":
       if (s.analysis?.photoUrl) URL.revokeObjectURL(s.analysis.photoUrl);
-      s.captured?.bitmap?.close();
+      closeCaptured(s.captured);
       return { ...s, captured: null, analysis: null, scanId: null, orderId: null, ai: { status: "off" }, step: "camera", dir: -1 };
     case "aiConsent":
       return { ...s, aiConsent: a.consent };

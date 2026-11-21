@@ -14,26 +14,24 @@ import {
   success,
   type FakeOptions,
 } from "./fakeYoucam.js";
-import { fakeClock, fakeJpeg, fakePng, memoryLogger } from "./helpers.js";
+import { fakeClock, fakeJpeg, fakePng } from "./helpers.js";
 
 const CONCERNS: ConcernId[] = ["acne", "wrinkles", "pores", "texture"];
 
 function setup(fakeOpts: FakeOptions = {}, extra: Partial<YouCamOptions> = {}) {
   const fake = fakeYouCam(fakeOpts);
   const clock = fakeClock();
-  const log = memoryLogger();
   const provider = createYouCamProvider({
     apiKey: API_KEY,
     baseUrl: BASE,
     fetch: fake.fetch,
-    logger: log.logger,
     sleep: clock.sleep,
     now: clock.now,
     ...extra,
   });
   const analyze = (concerns: readonly ConcernId[] = CONCERNS, image = fakeJpeg(2048)) =>
     provider.analyze({ image, contentType: "image/jpeg", concerns });
-  return { fake, clock, log, provider, analyze };
+  return { fake, clock, provider, analyze };
 }
 
 async function errorOf(promise: Promise<unknown>): Promise<ApiError> {
@@ -92,7 +90,7 @@ describe("youcam provider: happy path", () => {
     expect(clock.slept).toEqual([1500, 1500, 1500]);
     expect(fake.calls.map((c) => c.step)).toEqual(["file", "upload", "task", "poll", "poll", "poll"]);
 
-    expect(result).toEqual({ provider: "youcam", concerns: SAMPLE_CONCERNS, skinAge: 27 });
+    expect(result).toEqual({ provider: "youcam", concerns: SAMPLE_CONCERNS, skinAge: 27, usedSides: false });
   });
 
   it("declares PNG uploads as image/png / face.png", async () => {
@@ -163,6 +161,7 @@ describe("youcam provider: normalization", () => {
 
     expect(result).toEqual({
       provider: "youcam",
+      usedSides: false,
       concerns: [
         { id: "redness", score: 12, severity: 88, level: "high", maskUrl: null, regions: [] },
         {
@@ -225,12 +224,12 @@ describe("youcam provider: task errors", () => {
     ["error_inference_crashed", "provider_error", 502],
     ["toString", "provider_error", 502],
   ])("%s -> %s (%i)", async (providerCode, code, status) => {
-    const { analyze, log } = setup({ polls: [running(), failed(providerCode)] });
+    const { analyze } = setup({ polls: [running(), failed(providerCode)] });
     const err = await errorOf(analyze());
     expect(err.code).toBe(code);
     expect(err.status).toBe(status);
     expect(err.message.length).toBeGreaterThan(0);
-    expect(log.lines.join("\n")).toContain(providerCode);
+    expect(err.detail).toMatchObject({ step: "poll", providerCode, providerMessage: `detail for ${providerCode}` });
   });
 });
 
@@ -240,6 +239,7 @@ describe("youcam provider: timeouts", () => {
     const err = await errorOf(analyze());
     expect(err.code).toBe("timeout");
     expect(err.status).toBe(504);
+    expect(err.detail.step).toBe("poll");
     expect(clock.now()).toBeLessThanOrEqual(45_000);
     expect(clock.now()).toBeGreaterThanOrEqual(45_000 - 1500);
     expect(fake.ofStep("poll").length).toBe(30);
@@ -255,24 +255,24 @@ describe("youcam provider: timeouts", () => {
 });
 
 describe("youcam provider: HTTP errors", () => {
-  it("401 -> provider_error saying the API key was rejected, without logging the key", async () => {
-    const { analyze, log } = setup({ replies: { file: { status: 401, body: { status: 401, error: "Unauthorized" } } } });
+  it("401 -> provider_error saying the API key was rejected, without exposing the key", async () => {
+    const { analyze } = setup({ replies: { file: { status: 401, body: { status: 401, error: "Unauthorized" } } } });
     const err = await errorOf(analyze());
     expect(err.code).toBe("provider_error");
     expect(err.status).toBe(502);
     expect(err.message).toMatch(/api key/i);
-    expect(log.lines.join("\n")).toContain("401");
-    expect(log.lines.join("\n")).not.toContain(API_KEY);
+    expect(err.detail).toMatchObject({ step: "file", providerStatus: 401 });
+    expect(JSON.stringify(err.detail)).not.toContain(API_KEY);
   });
 
   it("400 CreditInsufficiency -> provider_error 'out of credits'", async () => {
-    const { analyze, log } = setup({
+    const { analyze } = setup({
       replies: { task: { status: 400, body: { status: 400, error_code: "CreditInsufficiency", error: "No credit" } } },
     });
     const err = await errorOf(analyze());
     expect(err.code).toBe("provider_error");
     expect(err.message).toMatch(/out of credits/i);
-    expect(log.lines.join("\n")).toContain("CreditInsufficiency");
+    expect(err.detail).toMatchObject({ step: "task", providerStatus: 400, providerCode: "CreditInsufficiency" });
   });
 
   it("429 -> rate_limited", async () => {
@@ -289,7 +289,9 @@ describe("youcam provider: HTTP errors", () => {
 
   it("failed S3 upload -> provider_error", async () => {
     const { analyze, fake } = setup({ replies: { upload: { status: 403, body: "denied" } } });
-    expect((await errorOf(analyze())).code).toBe("provider_error");
+    const err = await errorOf(analyze());
+    expect(err.code).toBe("provider_error");
+    expect(err.detail).toMatchObject({ step: "upload", providerStatus: 403 });
     expect(fake.ofStep("task")).toHaveLength(0);
   });
 
@@ -298,13 +300,16 @@ describe("youcam provider: HTTP errors", () => {
     expect((await errorOf(analyze())).code).toBe("provider_error");
   });
 
-  it("network failure -> provider_error, never logs the key", async () => {
+  it("network failure -> provider_error with the socket error code, never the key", async () => {
     const fetch = (async () => {
-      throw new TypeError(`fetch failed (Bearer ${API_KEY})`);
+      throw new TypeError(`fetch failed (Bearer ${API_KEY})`, { cause: Object.assign(new Error("dns"), { code: "ENOTFOUND" }) });
     }) as typeof globalThis.fetch;
-    const { analyze, log } = setup({}, { fetch });
-    expect((await errorOf(analyze())).code).toBe("provider_error");
-    expect(log.lines.join("\n")).not.toContain(API_KEY);
+    const { analyze } = setup({}, { fetch });
+    const err = await errorOf(analyze());
+    expect(err.code).toBe("provider_error");
+    expect(err.detail).toMatchObject({ step: "file", providerCode: "ENOTFOUND" });
+    expect(JSON.stringify(err)).not.toContain(API_KEY);
+    expect(JSON.stringify(err.detail)).not.toContain(API_KEY);
   });
 });
 

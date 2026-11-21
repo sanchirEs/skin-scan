@@ -13,16 +13,18 @@ export default function Privacy() {
       </Link>
       <h1 className="type-display mt-6 text-[32px]">How we handle your data</h1>
       <div className="mt-6 space-y-5 text-[16px] leading-[1.6] text-ink-soft [&_h2]:mt-8 [&_h2]:text-[18px] [&_h2]:font-semibold [&_h2]:text-ink">
-        <h2>Your photo</h2>
+        <h2>Your photos</h2>
         <p>
-          With &ldquo;Scan on this phone only&rdquo;, the scan runs entirely on your phone and the photo never leaves it. When you
-          leave the page, it is gone.
+          The scan takes a photo of your face from the front, then one turned to each side, which you can skip. With &ldquo;Scan on
+          this phone only&rdquo;, the scan runs entirely on your phone and the photos never leave it. When you leave the page, they
+          are gone.
         </p>
         <h2>The AI check</h2>
         <p>
-          If you choose &ldquo;Scan with AI check&rdquo;, a cropped photo of your face is sent securely to our server and on to our
-          AI partner, Perfect Corp (YouCam), to find acne, wrinkles and pores. We do not store the photo. Perfect Corp keeps the
-          analysis results for up to 30 days under its own privacy policy. We keep only the resulting numbers.
+          If you choose &ldquo;Scan with AI check&rdquo;, cropped photos of your face, from the front and from each side, are sent
+          securely to our server and on to our AI partner, Perfect Corp (YouCam), to find acne, wrinkles and pores. We do not store
+          the photos. Perfect Corp keeps the analysis results for up to 30 days under its own privacy policy. We keep only the
+          resulting numbers. Without the AI check, the side photos are only used on your phone.
         </p>
         <h2>Anonymous scan numbers</h2>
         <p>

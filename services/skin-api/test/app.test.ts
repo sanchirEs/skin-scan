@@ -2,29 +2,31 @@ import { describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import { ApiError } from "../src/errors.js";
-import { silentLogger } from "../src/log.js";
+import { silentLogger, type Logger } from "../src/log.js";
 import { createProvider } from "../src/providers/index.js";
 import type { SkinProvider } from "../src/types.js";
+import { AIL_BASE, AIL_KEY, PRO_CONCERNS, ailabError, fakeAilab } from "./fakeAilab.js";
 import { API_KEY, BASE, SAMPLE_CONCERNS, failed, fakeYouCam, sampleOutput, success } from "./fakeYoucam.js";
-import { fakeClock, fakeJpeg, fakePng } from "./helpers.js";
+import { fakeClock, fakeJpeg, fakePng, memoryLogger } from "./helpers.js";
 
 const ORIGINS = "http://localhost:3000,https://*-sanchires-projects.vercel.app";
 const PREVIEW = "https://skin-check-git-main-sanchires-projects.vercel.app";
+const YOUCAM_ENV = { SKIN_PROVIDER: "youcam", YOUCAM_API_KEY: API_KEY, YOUCAM_BASE_URL: BASE };
+const AILAB_ENV = { SKIN_PROVIDER: "ailabtools", AILABTOOLS_API_KEY: AIL_KEY, AILAB_BASE_URL: AIL_BASE };
 
 interface Setup {
   env?: Record<string, string>;
   provider?: SkinProvider;
   fetch?: typeof fetch;
   now?: () => number;
+  logger?: Logger;
 }
 
-function makeApp({ env = {}, provider, fetch, now }: Setup = {}) {
+function makeApp({ env = {}, provider, fetch, now, logger = silentLogger }: Setup = {}) {
   const config = loadConfig({ SKIN_PROVIDER: "mock", ALLOWED_ORIGINS: ORIGINS, ...env });
   const clock = fakeClock();
-  const used =
-    provider ??
-    createProvider(config, { logger: silentLogger, fetch, sleep: clock.sleep, now: clock.now });
-  return createApp({ config, provider: used, logger: silentLogger, now });
+  const used = provider ?? createProvider(config, { fetch, sleep: clock.sleep, now: clock.now });
+  return createApp({ config, provider: used, logger, now });
 }
 
 type App = ReturnType<typeof makeApp>;
@@ -72,6 +74,16 @@ describe("GET /health", () => {
     expect(JSON.parse(text)).toMatchObject({ provider: "youcam", configured: true });
     expect(text).not.toContain(API_KEY);
   });
+
+  it("reflects AILABTOOLS_API_KEY when ailabtools is selected", async () => {
+    const without = await makeApp({ env: { SKIN_PROVIDER: "ailabtools", YOUCAM_API_KEY: API_KEY } }).request("/health");
+    expect(await json(without)).toMatchObject({ provider: "ailabtools", configured: false });
+
+    const res = await makeApp({ env: AILAB_ENV }).request("/health");
+    const text = await res.text();
+    expect(JSON.parse(text)).toMatchObject({ provider: "ailabtools", configured: true });
+    expect(text).not.toContain(AIL_KEY);
+  });
 });
 
 describe("POST /v1/analyze: input validation", () => {
@@ -81,7 +93,7 @@ describe("POST /v1/analyze: input validation", () => {
     expect(await json(res)).toEqual({ error: "bad_image", message: expect.any(String) });
   });
 
-  it("rejects multipart/form uploads with 400 bad_image", async () => {
+  it("rejects a malformed multipart body with 400 bad_image", async () => {
     const res = await analyze(makeApp(), "--boundary", { "Content-Type": "multipart/form-data; boundary=x" });
     expect(res.status).toBe(400);
     expect((await json(res)).error).toBe("bad_image");
@@ -154,18 +166,208 @@ describe("POST /v1/analyze: provider errors", () => {
 
   it("runs the youcam provider end to end (fake fetch)", async () => {
     const fake = fakeYouCam({ polls: [success(sampleOutput())] });
-    const app = makeApp({ env: { SKIN_PROVIDER: "youcam", YOUCAM_API_KEY: API_KEY, YOUCAM_BASE_URL: BASE }, fetch: fake.fetch });
+    const app = makeApp({ env: YOUCAM_ENV, fetch: fake.fetch });
     const res = await analyze(app);
     expect(res.status).toBe(200);
-    expect(await json(res)).toEqual({ provider: "youcam", concerns: SAMPLE_CONCERNS, skinAge: 27 });
+    expect(await json(res)).toEqual({ provider: "youcam", concerns: SAMPLE_CONCERNS, skinAge: 27, usedSides: false });
   });
 
   it("maps a youcam task error to 422", async () => {
     const fake = fakeYouCam({ polls: [failed("error_lighting_dark")] });
-    const app = makeApp({ env: { SKIN_PROVIDER: "youcam", YOUCAM_API_KEY: API_KEY, YOUCAM_BASE_URL: BASE }, fetch: fake.fetch });
+    const app = makeApp({ env: YOUCAM_ENV, fetch: fake.fetch });
     const res = await analyze(app);
     expect(res.status).toBe(422);
     expect((await json(res)).error).toBe("too_dark");
+  });
+
+  it("runs the ailabtools provider end to end (fake fetch)", async () => {
+    const fake = fakeAilab();
+    const res = await analyze(makeApp({ env: AILAB_ENV, fetch: fake.fetch }));
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({ provider: "ailabtools", concerns: PRO_CONCERNS, skinAge: 31, usedSides: false });
+  });
+
+  it("maps ailabtools errors to the same contract codes", async () => {
+    const noFace = await analyze(makeApp({ env: AILAB_ENV, fetch: fakeAilab(ailabError(422, "ERROR_NO_FACE_IN_FILE")).fetch }));
+    expect(noFace.status).toBe(422);
+    expect(await json(noFace)).toEqual({ error: "no_face", message: expect.any(String) });
+
+    const credits = await analyze(makeApp({ env: AILAB_ENV, fetch: fakeAilab(ailabError(429, "ERROR_NOT_ENOUGH_CREDITS")).fetch }));
+    expect(credits.status).toBe(502);
+    expect(await json(credits)).toEqual({ error: "provider_error", message: expect.stringMatching(/out of credits/) });
+  });
+});
+
+describe("logging", () => {
+  it("logs exactly one provider_failed line with provider, step and provider status/code, never the key", async () => {
+    const log = memoryLogger();
+    const fake = fakeYouCam({ replies: { file: { status: 401, body: { status: 401, error_code: "InvalidKey" } } } });
+    const res = await analyze(makeApp({ env: YOUCAM_ENV, fetch: fake.fetch, logger: log.logger }));
+    expect(res.status).toBe(502);
+
+    expect(log.lines).toHaveLength(1);
+    expect(JSON.parse(log.lines[0]!)).toMatchObject({
+      level: "warn",
+      event: "provider_failed",
+      provider: "youcam",
+      code: "provider_error",
+      step: "file",
+      providerStatus: 401,
+      providerCode: "InvalidKey",
+    });
+    expect(log.lines[0]).not.toContain(API_KEY);
+  });
+
+  it("logs ailabtools failures the same way, including photo problems", async () => {
+    const log = memoryLogger();
+    const fake = fakeAilab(ailabError(422, "ERROR_POOR_FACE_LIGHTING", "face too dark"));
+    const res = await analyze(makeApp({ env: AILAB_ENV, fetch: fake.fetch, logger: log.logger }), fakeJpeg(4000, 9));
+    expect(res.status).toBe(422);
+
+    expect(log.lines).toHaveLength(1);
+    expect(JSON.parse(log.lines[0]!)).toMatchObject({
+      event: "provider_failed",
+      provider: "ailabtools",
+      code: "too_dark",
+      step: "analyze",
+      providerStatus: 422,
+      providerCode: "ERROR_POOR_FACE_LIGHTING",
+      providerMessage: "face too dark",
+    });
+    expect(log.lines[0]).not.toContain(AIL_KEY);
+    expect(log.lines[0]!.length).toBeLessThan(600); // no image bytes
+  });
+
+  it("logs a timeout with the step it happened in", async () => {
+    const log = memoryLogger();
+    const fake = fakeYouCam({ polls: [{ status: 200, data: { task_status: "running" } }] });
+    const res = await analyze(makeApp({ env: YOUCAM_ENV, fetch: fake.fetch, logger: log.logger }));
+    expect(res.status).toBe(504);
+    expect(JSON.parse(log.lines[0]!)).toMatchObject({ event: "provider_failed", provider: "youcam", code: "timeout", step: "poll" });
+  });
+
+  it("logs one request_rejected line for requests rejected before the provider", async () => {
+    const log = memoryLogger();
+    const res = await analyze(makeApp({ logger: log.logger }), fakeJpeg(), { "Content-Type": "text/plain" });
+    expect(res.status).toBe(400);
+    expect(log.lines).toHaveLength(1);
+    expect(JSON.parse(log.lines[0]!)).toMatchObject({ event: "request_rejected", code: "bad_image", status: 400 });
+  });
+
+  it("logs analyze_ok on success", async () => {
+    const log = memoryLogger();
+    await analyze(makeApp({ logger: log.logger }));
+    expect(log.lines).toHaveLength(1);
+    expect(JSON.parse(log.lines[0]!)).toMatchObject({ event: "analyze_ok", provider: "mock", usedSides: false });
+  });
+});
+
+describe("POST /v1/analyze: multipart with side photos", () => {
+  type Part = [name: string, value: Uint8Array<ArrayBuffer> | string];
+
+  function multipart(app: App, parts: Part[], headers: Record<string, string> = {}) {
+    const form = new FormData();
+    for (const [name, value] of parts) {
+      if (typeof value === "string") form.append(name, value);
+      else form.append(name, new Blob([value], { type: "image/jpeg" }), `${name}.jpg`);
+    }
+    // no Content-Type: Request sets multipart/form-data with the boundary
+    return app.request("/v1/analyze", { method: "POST", headers: { "X-Forwarded-For": "203.0.113.7", ...headers }, body: form });
+  }
+
+  function recordingProvider() {
+    return stubProvider(async () => ({ provider: "mock", concerns: [], skinAge: null, usedSides: false }));
+  }
+
+  it("accepts the front photo alone", async () => {
+    const provider = recordingProvider();
+    const front = fakeJpeg(300, 3);
+    const res = await multipart(makeApp({ provider }), [["image", front]]);
+    expect(res.status).toBe(200);
+    const input = vi.mocked(provider.analyze).mock.calls[0]?.[0];
+    expect(input?.image).toEqual(front);
+    expect(input?.contentType).toBe("image/jpeg");
+    expect(input?.sides).toBeUndefined();
+  });
+
+  it("passes left and right photos to the provider", async () => {
+    const provider = recordingProvider();
+    const left = fakeJpeg(200, 4);
+    const right = fakePng(250);
+    const res = await multipart(makeApp({ provider }), [
+      ["image", fakePng(300)],
+      ["left", left],
+      ["right", right],
+    ]);
+    expect(res.status).toBe(200);
+    const input = vi.mocked(provider.analyze).mock.calls[0]?.[0];
+    expect(input?.contentType).toBe("image/png"); // detected from the bytes
+    expect(input?.sides).toEqual({ left, right });
+  });
+
+  it("returns the usual contract with usedSides", async () => {
+    const res = await multipart(makeApp(), [["image", fakeJpeg()], ["left", fakeJpeg()]]);
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body).toMatchObject({ provider: "mock", usedSides: false });
+    expect(body.concerns).toHaveLength(4);
+  });
+
+  it.each<[string, Part[]]>([
+    ["an unknown field name", [["image", fakeJpeg()], ["photo", fakeJpeg()]]],
+    ["a missing front photo", [["left", fakeJpeg()]]],
+    ["a text field instead of a file", [["image", "aGVsbG8="]]],
+    ["a duplicated field", [["image", fakeJpeg()], ["image", fakeJpeg()]]],
+    ["a side file that is not an image", [["image", fakeJpeg()], ["right", new TextEncoder().encode("hello") as Uint8Array<ArrayBuffer>]]],
+    ["an empty front file", [["image", new Uint8Array(0)]]],
+  ])("rejects %s with 400 bad_image", async (_label, parts) => {
+    const provider = recordingProvider();
+    const res = await multipart(makeApp({ provider }), parts);
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({ error: "bad_image", message: expect.any(String) });
+    expect(provider.analyze).not.toHaveBeenCalled();
+  });
+
+  it("applies MAX_IMAGE_BYTES to each file", async () => {
+    const app = makeApp({ env: { MAX_IMAGE_BYTES: "1000", RATE_LIMIT_PER_MIN: "100" } });
+    const ok = await multipart(app, [["image", fakeJpeg(1000)], ["left", fakeJpeg(1000)], ["right", fakeJpeg(1000)]]);
+    expect(ok.status).toBe(200);
+
+    const tooBig = await multipart(app, [["image", fakeJpeg(1000)], ["right", fakeJpeg(1001)]]);
+    expect(tooBig.status).toBe(413);
+    expect(await json(tooBig)).toEqual({ error: "too_large", message: expect.any(String) });
+  });
+
+  it("youcam ignores side photos (one upload, usedSides false)", async () => {
+    const fake = fakeYouCam({ polls: [success(sampleOutput())] });
+    const res = await multipart(makeApp({ env: YOUCAM_ENV, fetch: fake.fetch }), [
+      ["image", fakeJpeg(700)],
+      ["left", fakeJpeg(800)],
+      ["right", fakeJpeg(900)],
+    ]);
+    expect(res.status).toBe(200);
+    expect((await json(res)).usedSides).toBe(false);
+    expect(fake.ofStep("upload")).toHaveLength(1);
+    expect(fake.ofStep("file")[0]?.body).toMatchObject({ files: [{ file_size: 700 }] });
+  });
+
+  it("ailabtools (Pro) sends side photos as left_side_image / right_side_image", async () => {
+    const fake = fakeAilab();
+    const left = fakeJpeg(800, 4);
+    const res = await multipart(makeApp({ env: AILAB_ENV, fetch: fake.fetch }), [
+      ["image", fakeJpeg(700)],
+      ["left", left],
+    ]);
+    expect(res.status).toBe(200);
+    expect((await json(res)).usedSides).toBe(true);
+    expect(fake.calls[0]?.fields.left_side_image).toMatchObject({ bytes: left });
+    expect(fake.calls[0]?.fields.right_side_image).toBeUndefined();
+  });
+
+  it("keeps the raw-body form working", async () => {
+    const res = await analyze(makeApp());
+    expect(res.status).toBe(200);
+    expect((await json(res)).usedSides).toBe(false);
   });
 });
 
@@ -198,7 +400,7 @@ describe("CORS", () => {
   });
 
   it("rejects a POST from a disallowed origin with 403 before touching the provider", async () => {
-    const provider = stubProvider(async () => ({ provider: "mock", concerns: [], skinAge: null }));
+    const provider = stubProvider(async () => ({ provider: "mock", concerns: [], skinAge: null, usedSides: false }));
     const res = await analyze(makeApp({ provider }), fakeJpeg(), { Origin: "https://evil.example" });
     expect(res.status).toBe(403);
     expect(await json(res)).toEqual({ error: "origin_not_allowed", message: expect.any(String) });

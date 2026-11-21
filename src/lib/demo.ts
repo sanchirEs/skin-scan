@@ -3,6 +3,7 @@
 import type { Analysis } from "@/components/flow/flow";
 import type { AiResult } from "./ai/types";
 import { makeFixtureLandmarks } from "./analysis/fixtures";
+import type { SideSample } from "./analysis/sides";
 import { buildZones } from "./analysis/zones";
 
 export const DEMO_ALLOWED =
@@ -27,6 +28,15 @@ export const DEMO_AI: AiResult = {
     { id: "texture", score: 63, severity: 37, level: "mild", maskUrl: null, regions: [] },
   ],
 };
+
+const ramp = (t: number, t0: number, t1: number, from: number, to: number) =>
+  from + (to - from) * Math.min(1, Math.max(0, (t - t0) / (t1 - t0)));
+
+/** A still, well-lit face turning to one side, then the other, `ms` after the side steps began. */
+export function demoSideSample(ms: number): SideSample {
+  const yaw = ms < 1300 ? ramp(ms, 0, 600, 0, 30) : ramp(ms, 1300, 2300, 30, -30);
+  return { faces: 1, yaw, light: null, motion: 0 };
+}
 
 export async function demoAnalysis(): Promise<Analysis> {
   const size = 400;
@@ -74,5 +84,6 @@ export async function demoAnalysis(): Promise<Analysis> {
     zones,
     size: { w: size, h: size },
     uploadBlob: null,
+    sideBlobs: {},
   };
 }

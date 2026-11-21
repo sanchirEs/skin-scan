@@ -1,7 +1,7 @@
 // Live quality checks on the camera preview, and the capture burst.
 import type { FaceLandmarker, NormalizedLandmark } from "@mediapipe/tasks-vision";
 import { isSpecular, srgbToLab } from "../color/convert";
-import { checkQuality, laplacianVariance, poseFromMatrix, type Hint } from "../analysis/quality";
+import { checkQuality, laplacianVariance, lightProblem, poseFromMatrix, type Hint, type LightProblem } from "../analysis/quality";
 import { FACE_OVAL } from "../analysis/zones";
 
 const SAMPLE_W = 160;
@@ -19,7 +19,11 @@ function sampleCtx(w: number, h: number) {
 export type LiveResult = {
   hint: Hint;
   landmarks: NormalizedLandmark[] | null;
-  metrics: { faceWidth: number; light: number; yaw: number };
+  /** Faces found in the frame. */
+  faces: number;
+  /** The light checks alone, whatever the pose: the side photos are taken with the head turned. */
+  light: LightProblem | null;
+  metrics: { faceWidth: number; light: number; yaw: number; motion: number };
 };
 
 function faceBox(lm: NormalizedLandmark[]) {
@@ -62,8 +66,8 @@ export function liveQuality(
 ): LiveResult {
   const res = landmarker.detectForVideo(video, ts);
   const faces = res.faceLandmarks.length;
-  const none = { faceWidth: 0, light: 0, yaw: 0 };
-  if (faces === 0) return { hint: "no-face", landmarks: null, metrics: none };
+  const none = { faceWidth: 0, light: 0, yaw: 0, motion: 0 };
+  if (faces === 0) return { hint: "no-face", landmarks: null, faces, light: null, metrics: none };
   const lm = res.faceLandmarks[0];
 
   const vw = video.videoWidth || 1;
@@ -96,7 +100,7 @@ export function liveQuality(
     motion = sum / n / (box.w || 1);
   }
 
-  const hint = checkQuality({
+  const q = {
     faces,
     bbox: sized,
     poseDeg: pose,
@@ -104,8 +108,14 @@ export function liveQuality(
     cheekR: right.median,
     clippedShare: (a.clipped + b.clipped) / Math.max(1, a.n + b.n),
     motion,
-  });
-  return { hint, landmarks: lm, metrics: { faceWidth: sized.w, light: (left.median + right.median) / 2, yaw: pose.yaw } };
+  };
+  return {
+    hint: checkQuality(q),
+    landmarks: lm,
+    faces,
+    light: lightProblem(q),
+    metrics: { faceWidth: sized.w, light: (left.median + right.median) / 2, yaw: pose.yaw, motion },
+  };
 }
 
 function sharpness(bitmap: ImageBitmap): number {

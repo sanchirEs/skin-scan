@@ -3,6 +3,7 @@
 // or not the frame was mirrored.
 import {
   type Mask,
+  countMask,
   type Pt,
   dist,
   ellipseMask,
@@ -91,4 +92,12 @@ export function buildZones(lm: Pt[], width: number, height: number): Record<Zone
     underEyeL: finish(band(lidLeft)),
     underEyeR: finish(band(lidRight)),
   };
+}
+
+/**
+ * On a turned head the far cheek slips behind the face edge, so the oval cuts
+ * its zone down: the cheek with more visible pixels is the one facing the camera.
+ */
+export function facingCheek(zones: Record<ZoneId, Mask>): "cheekL" | "cheekR" {
+  return countMask(zones.cheekL) >= countMask(zones.cheekR) ? "cheekL" : "cheekR";
 }

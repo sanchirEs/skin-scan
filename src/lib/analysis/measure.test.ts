@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { labToSrgb, srgbToLab } from "../color/convert";
 import { emptyMask, type Mask } from "./geometry";
 import { measure } from "./measure";
-import { toReadings } from "./readings";
+import { sideIntensities, toReadings } from "./readings";
 import { makeFixtureLandmarks } from "./fixtures";
 import type { Rgba } from "./types";
-import { buildZones, type ZoneId } from "./zones";
+import { ZONE_IDS, buildZones, type ZoneId } from "./zones";
 
 const SIZE = 400;
 const zones = buildZones(makeFixtureLandmarks(SIZE), SIZE, SIZE);
@@ -212,5 +212,99 @@ describe("toReadings", () => {
     const out = toReadings(res.raw);
     expect(out.tone.category).toBe("light");
     expect(out.readings.map((r) => r.id)).not.toContain("tone");
+  });
+});
+
+describe("measure on a subset of zones", () => {
+  const only = (id: ZoneId) => ({ only: [id] as ZoneId[] });
+
+  it("gives exactly the front result when every zone is listed", () => {
+    const img = skinImage(64, 12, 16);
+    shiftLab(
+      img,
+      cheekIdx().filter((_, k) => k % 10 < 3),
+      0,
+      12,
+    );
+    const { cx, cy } = centroidOf(zones.cheekL);
+    shiftLab(img, [cy * SIZE + cx, cy * SIZE + cx + 1, (cy + 1) * SIZE + cx], -15, 0);
+    expect(measure(img, zones, { only: ZONE_IDS })).toEqual(measure(img, zones));
+  });
+
+  it("measures one cheek when the rest of the face is out of view", () => {
+    const img = skinImage(68, 12, 16);
+    const empty = emptyMask(SIZE, SIZE);
+    const cheekOnly = Object.fromEntries(ZONE_IDS.map((id) => [id, id === "cheekL" ? zones.cheekL : empty])) as Record<
+      ZoneId,
+      Mask
+    >;
+    expect(measure(img, cheekOnly)).toEqual({ ok: false, reason: "too-few-pixels" });
+    const res = measure(img, cheekOnly, only("cheekL"));
+    if (!res.ok) throw new Error(res.reason);
+    expect(res.raw.zonePixels.cheekL).toBeGreaterThan(40);
+    expect(res.raw.zonePixels.forehead).toBe(0);
+    expect(res.raw.zonePixels.cheekR).toBe(0);
+  });
+
+  it("reads a calm cheek as calm and even", () => {
+    const res = measure(skinImage(68, 12, 16), zones, only("cheekR"));
+    if (!res.ok) throw new Error(res.reason);
+    const s = sideIntensities(res.raw);
+    expect(s.redness).toBeLessThan(20);
+    expect(s.evenness).toBeLessThan(20);
+  });
+
+  it("reads redness on the one cheek it was given", () => {
+    const img = skinImage(68, 12, 16);
+    shiftLab(
+      img,
+      indices(zones.cheekL).filter((_, k) => k % 10 < 3),
+      0,
+      12,
+    );
+    const res = measure(img, zones, only("cheekL"));
+    if (!res.ok) throw new Error(res.reason);
+    expect(sideIntensities(res.raw).redness).toBeGreaterThanOrEqual(45);
+    // Redness on the other cheek is not seen.
+    const other = measure(img, zones, only("cheekR"));
+    if (!other.ok) throw new Error(other.reason);
+    expect(sideIntensities(other.raw).redness).toBeLessThan(20);
+  });
+
+  it("counts dark spots on the one cheek", () => {
+    const img = skinImage(68, 12, 16);
+    const { cx, cy } = centroidOf(zones.cheekL);
+    for (const [ox, oy] of [
+      [-12, -9],
+      [12, -9],
+      [0, 0],
+      [-12, 9],
+      [12, 9],
+    ]) {
+      const blob: number[] = [];
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) blob.push((cy + oy + dy) * SIZE + cx + ox + dx);
+      shiftLab(img, blob, -15, 0);
+    }
+    const res = measure(img, zones, only("cheekL"));
+    if (!res.ok) throw new Error(res.reason);
+    expect(res.raw.spotCount).toBeGreaterThanOrEqual(4);
+    expect(sideIntensities(res.raw).evenness).toBeGreaterThan(0);
+  });
+
+  it("leaves the front-only measures unread", () => {
+    const res = measure(skinImage(68, 12, 16), zones, only("cheekL"));
+    if (!res.ok) throw new Error(res.reason);
+    expect(res.raw.darkCircleDeltaL).toBeNaN();
+    expect(res.raw.shineT).toBeNaN();
+  });
+
+  it("still refuses a blown-out cheek", () => {
+    const img = skinImage(68, 12, 16);
+    paint(
+      img,
+      indices(zones.cheekL).filter((_, k) => k % 10 < 4),
+      [255, 255, 255],
+    );
+    expect(measure(img, zones, only("cheekL"))).toEqual({ ok: false, reason: "overexposed" });
   });
 });

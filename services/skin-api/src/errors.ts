@@ -18,19 +18,43 @@ const ERRORS = {
 export type ErrorCode = keyof typeof ERRORS;
 export type ErrorStatus = (typeof ERRORS)[ErrorCode][0];
 
+/** Diagnostics for the server log only; never sent to the client. Must not hold secrets or image bytes. */
+export interface FailureDetail {
+  /** Which provider call failed, e.g. "file", "poll", "analyze". */
+  step?: string;
+  /** HTTP status the provider answered with. */
+  providerStatus?: number;
+  /** The provider's own error code (or a socket error code like ECONNRESET). */
+  providerCode?: string;
+  providerMessage?: string;
+}
+
 /** An error the client is meant to see, rendered as {"error": code, "message": text}. */
 export class ApiError extends Error {
   readonly code: ErrorCode;
   readonly status: ErrorStatus;
+  readonly detail: FailureDetail;
 
-  constructor(code: ErrorCode, message?: string) {
+  constructor(code: ErrorCode, message?: string, detail: FailureDetail = {}) {
     super(message ?? ERRORS[code][1]);
     this.name = "ApiError";
     this.code = code;
     this.status = ERRORS[code][0];
+    this.detail = detail;
   }
 
   toJSON() {
     return { error: this.code, message: this.message };
   }
+}
+
+/** Turn a fetch() rejection into an ApiError: our time budget ran out -> timeout, anything else -> provider_error. */
+export function fetchFailure(err: unknown, step: string): ApiError {
+  const name = err instanceof Error ? err.name : "unknown";
+  if (name === "TimeoutError" || name === "AbortError") {
+    return new ApiError("timeout", undefined, { step, providerCode: name });
+  }
+  // undici puts the socket error (ENOTFOUND, ECONNRESET, ...) in `cause`. Never log err.message: it can echo headers.
+  const cause = err instanceof Error ? (err.cause as { code?: unknown } | undefined)?.code : undefined;
+  return new ApiError("provider_error", undefined, { step, providerCode: typeof cause === "string" ? cause : name });
 }

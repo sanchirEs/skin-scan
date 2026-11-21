@@ -61,6 +61,20 @@ describe("requestAiAnalysis", () => {
     expect(res).toEqual({ ok: false, error: "no_face" });
   });
 
+  it("accepts provider masks as links or embedded images, and nothing else", async () => {
+    const body = {
+      ...okBody,
+      concerns: [
+        { ...okBody.concerns[0], maskUrl: "data:image/png;base64,iVBORw0KGgo=" },
+        { ...okBody.concerns[1], maskUrl: "javascript:alert(1)" },
+      ],
+    };
+    const res = await requestAiAnalysis(jpeg, { baseUrl: "https://skin.example", fetchImpl: respond(200, body) });
+    if (!res.ok) throw new Error(res.error);
+    expect(res.result.concerns[0].maskUrl).toBe("data:image/png;base64,iVBORw0KGgo=");
+    expect(res.result.concerns[1].maskUrl).toBeNull();
+  });
+
   it("drops unknown concern ids instead of failing", async () => {
     const body = { ...okBody, concerns: [...okBody.concerns, { ...okBody.concerns[0], id: "sparkle" }] };
     const res = await requestAiAnalysis(jpeg, { baseUrl: "https://skin.example", fetchImpl: respond(200, body) });
@@ -80,6 +94,48 @@ describe("requestAiAnalysis", () => {
     }));
     const res = await requestAiAnalysis(jpeg, { baseUrl: "https://skin.example", fetchImpl, timeoutMs: 20 });
     expect(res).toEqual({ ok: false, error: "timeout" });
+  });
+});
+
+describe("requestAiAnalysis with side photos", () => {
+  const baseUrl = "https://skin.example";
+  const left = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 1])], { type: "image/jpeg" });
+  const right = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 2, 2])], { type: "image/jpeg" });
+  const sent = (fetchImpl: ReturnType<typeof respond>) => (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1];
+
+  it("sends the front and both sides as one multipart form", async () => {
+    const fetchImpl = respond(200, { ...okBody, usedSides: true });
+    const res = await requestAiAnalysis({ front: jpeg, left, right }, { baseUrl, fetchImpl });
+    const init = sent(fetchImpl);
+    expect(init.method).toBe("POST");
+    expect(init.body).toBeInstanceOf(FormData);
+    const form = init.body as FormData;
+    expect([...form.keys()]).toEqual(["image", "left", "right"]);
+    expect((form.get("image") as Blob).size).toBe(jpeg.size);
+    expect((form.get("left") as Blob).size).toBe(left.size);
+    expect((form.get("right") as Blob).size).toBe(right.size);
+    // The browser writes the multipart boundary into Content-Type itself.
+    expect(new Headers(init.headers).has("content-type")).toBe(false);
+    expect(res.ok && res.result.usedSides).toBe(true);
+  });
+
+  it("sends only the sides it has", async () => {
+    const fetchImpl = respond(200, okBody);
+    await requestAiAnalysis({ front: jpeg, right }, { baseUrl, fetchImpl });
+    expect([...(sent(fetchImpl).body as FormData).keys()]).toEqual(["image", "right"]);
+  });
+
+  it("keeps the raw image body when there are no side photos", async () => {
+    const fetchImpl = respond(200, okBody);
+    await requestAiAnalysis({ front: jpeg }, { baseUrl, fetchImpl });
+    const init = sent(fetchImpl);
+    expect(init.body).toBe(jpeg);
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBe("image/jpeg");
+  });
+
+  it("reads usedSides as false when the service leaves it out", async () => {
+    const res = await requestAiAnalysis(jpeg, { baseUrl, fetchImpl: respond(200, okBody) });
+    expect(res.ok && res.result.usedSides).toBe(false);
   });
 });
 

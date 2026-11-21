@@ -15,7 +15,7 @@ export const CONCERN_IDS = [
 ] as const;
 export type ConcernId = (typeof CONCERN_IDS)[number];
 
-export const PROVIDER_NAMES = ["youcam", "mock"] as const;
+export const PROVIDER_NAMES = ["youcam", "ailabtools", "mock"] as const;
 export type ProviderName = (typeof PROVIDER_NAMES)[number];
 
 export type ImageType = "image/jpeg" | "image/png";
@@ -42,14 +42,18 @@ export interface AnalysisResult {
   provider: ProviderName;
   concerns: Concern[];
   skinAge: number | null;
+  /** true only if the provider actually analyzed the side photos. */
+  usedSides: boolean;
 }
 
 export interface AnalyzeInput {
-  /** Raw image bytes. Held in memory only; never stored or logged. */
+  /** Raw image bytes of the front photo. Held in memory only; never stored or logged. */
   image: Uint8Array<ArrayBuffer>;
   contentType: ImageType;
   /** Which concerns to return, in this order. */
   concerns: readonly ConcernId[];
+  /** Optional photos with the face turned to each side (JPEG or PNG bytes). Providers may ignore them. */
+  sides?: { left?: Uint8Array<ArrayBuffer>; right?: Uint8Array<ArrayBuffer> };
 }
 
 /**

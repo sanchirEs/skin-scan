@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { M } from "@/config/messages";
 import { requestAiAnalysis } from "@/lib/ai/client";
 import { DEMO_AI, demoAnalysis } from "@/lib/demo";
-import { analyzeFrame, type FrameAnalysis } from "@/lib/vision/analyze-frame";
+import { addSides, analyzeFrame, type FrameAnalysis } from "@/lib/vision/analyze-frame";
 import { VisionLoadError } from "@/lib/vision/landmarker";
 import { TimeoutError, withTimeout } from "@/lib/timeout";
 import { RAMPS } from "../strip/colors";
@@ -34,7 +34,11 @@ export function Analyzing() {
       try {
         if (state.demo) res = await demoAnalysis();
         else if (!state.captured?.bitmap) res = { ok: false, reason: "no-face" };
-        else res = await withTimeout(analyzeFrame(state.captured.bitmap), 30_000);
+        else {
+          res = await withTimeout(analyzeFrame(state.captured.bitmap), 30_000);
+          // Side photos can only add to redness and evenness; each one that fails is left out.
+          if (res.ok) res = await addSides(res, state.captured.sides);
+        }
       } catch (err) {
         if (err instanceof VisionLoadError || err instanceof TimeoutError) {
           dispatch({ type: "go", step: "camera", dir: -1 });
@@ -58,7 +62,9 @@ export function Analyzing() {
       } else if (!res.uploadBlob) {
         dispatch({ type: "aiDone", token, outcome: { ok: false, error: "bad_image" } });
       } else {
-        requestAiAnalysis(res.uploadBlob).then((outcome) => dispatch({ type: "aiDone", token, outcome }));
+        requestAiAnalysis({ front: res.uploadBlob, ...res.sideBlobs }).then((outcome) =>
+          dispatch({ type: "aiDone", token, outcome }),
+        );
       }
     })();
     return () => {

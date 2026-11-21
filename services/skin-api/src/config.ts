@@ -1,10 +1,14 @@
 import { z } from "zod";
 import { CONCERN_IDS, PROVIDER_NAMES, type ConcernId, type ProviderName } from "./types.js";
 
+export const AILAB_TIERS = ["pro", "advanced"] as const;
+export type AilabTier = (typeof AILAB_TIERS)[number];
+
 export interface Config {
   port: number;
   provider: ProviderName;
   youcam: { apiKey: string | undefined; baseUrl: string };
+  ailabtools: { apiKey: string | undefined; baseUrl: string; tier: AilabTier };
   concerns: ConcernId[];
   /** Exact origins or patterns with "*" (matches one or more of [A-Za-z0-9-]). */
   allowedOrigins: string[];
@@ -32,6 +36,9 @@ const Env = z.object({
   SKIN_PROVIDER: z.enum(PROVIDER_NAMES).default("youcam"),
   YOUCAM_API_KEY: z.string().optional(),
   YOUCAM_BASE_URL: z.url().default("https://yce-api-01.makeupar.com"),
+  AILABTOOLS_API_KEY: z.string().optional(),
+  AILAB_BASE_URL: z.url().default("https://www.ailabapi.com"),
+  AILAB_TIER: z.enum(AILAB_TIERS).default("pro"),
   SKIN_CONCERNS: list("acne,wrinkles,pores,texture").pipe(z.array(z.enum(CONCERN_IDS)).min(1)),
   ALLOWED_ORIGINS: list(""),
   RATE_LIMIT_PER_MIN: int(6),
@@ -55,6 +62,11 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     port: e.PORT,
     provider: e.SKIN_PROVIDER,
     youcam: { apiKey: e.YOUCAM_API_KEY, baseUrl: e.YOUCAM_BASE_URL.replace(/\/+$/, "") },
+    ailabtools: {
+      apiKey: e.AILABTOOLS_API_KEY,
+      baseUrl: e.AILAB_BASE_URL.replace(/\/+$/, ""),
+      tier: e.AILAB_TIER,
+    },
     concerns: e.SKIN_CONCERNS,
     allowedOrigins: e.ALLOWED_ORIGINS,
     rateLimitPerMin: e.RATE_LIMIT_PER_MIN,

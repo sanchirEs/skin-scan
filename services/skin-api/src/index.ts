@@ -12,7 +12,7 @@ try {
   process.exit(1);
 }
 
-const provider = createProvider(config, { logger });
+const provider = createProvider(config);
 const app = createApp({ config, provider, logger });
 
 const server = serve({ fetch: app.fetch, port: config.port }, ({ port }) => {

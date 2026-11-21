@@ -7,8 +7,7 @@
  *   4. GET  /s2s/v2.1/task/skin-analysis/{id}   poll until success | error
  */
 import { z } from "zod";
-import { ApiError, type ErrorCode } from "../errors.js";
-import { consoleLogger, type Logger } from "../log.js";
+import { ApiError, fetchFailure, type ErrorCode } from "../errors.js";
 import { clampScore, makeConcern } from "../normalize.js";
 import type { AnalysisResult, Concern, ConcernId, Region, SkinProvider } from "../types.js";
 
@@ -156,7 +155,6 @@ export interface YouCamOptions {
   apiKey: string | undefined;
   baseUrl: string;
   fetch?: typeof fetch;
-  logger?: Logger;
   /** Delay between status polls. Default 1500 ms. */
   pollIntervalMs?: number;
   /** Budget for the whole upload + task + polling. Default 45 s. */
@@ -172,41 +170,41 @@ export function createYouCamProvider(options: YouCamOptions): SkinProvider {
     apiKey,
     baseUrl,
     fetch: fetchFn = fetch,
-    logger = consoleLogger,
     pollIntervalMs = 1500,
     timeoutMs = 45_000,
     sleep = realSleep,
     now = Date.now,
   } = options;
 
+  // Failures carry a FailureDetail (step, provider status/code); the route logs it as one line.
   function httpError(step: string, status: number, body: unknown): ApiError {
     const providerCode = ErrorBody.parse(body).error_code;
-    logger.warn("youcam_http_error", { step, status, providerCode });
-    if (status === 401) return new ApiError("provider_error", "The skin analysis provider rejected our API key.");
-    if (status === 429) return new ApiError("rate_limited", "The skin analysis provider is busy. Please try again in a minute.");
-    if (providerCode === "CreditInsufficiency") {
-      return new ApiError("provider_error", "The skin analysis provider is out of credits.");
+    const detail = { step, providerStatus: status, providerCode };
+    if (status === 401) return new ApiError("provider_error", "The skin analysis provider rejected our API key.", detail);
+    if (status === 429) {
+      return new ApiError("rate_limited", "The skin analysis provider is busy. Please try again in a minute.", detail);
     }
-    return new ApiError("provider_error");
+    if (providerCode === "CreditInsufficiency") {
+      return new ApiError("provider_error", "The skin analysis provider is out of credits.", detail);
+    }
+    return new ApiError("provider_error", undefined, detail);
   }
 
   return {
     name: "youcam",
     configured: Boolean(apiKey),
 
+    // Side photos are ignored: each extra image would cost a full analysis.
     async analyze({ image, contentType, concerns }): Promise<AnalysisResult> {
       if (!apiKey) throw new ApiError("not_configured");
       const deadline = now() + timeoutMs;
 
-      /** fetch with the remaining time budget; maps network failures. Never logs headers or messages. */
+      /** fetch with the remaining time budget. */
       async function send(step: string, url: string, init: RequestInit): Promise<Response> {
         try {
           return await fetchFn(url, { ...init, signal: AbortSignal.timeout(Math.max(1, deadline - now())) });
         } catch (err) {
-          const name = err instanceof Error ? err.name : "unknown";
-          if (name === "TimeoutError" || name === "AbortError") throw new ApiError("timeout");
-          logger.warn("youcam_network_error", { step, error: name });
-          throw new ApiError("provider_error");
+          throw fetchFailure(err, step);
         }
       }
 
@@ -223,8 +221,11 @@ export function createYouCamProvider(options: YouCamOptions): SkinProvider {
         if (!res.ok) throw httpError(step, res.status, json);
         const parsed = schema.safeParse(json);
         if (!parsed.success) {
-          logger.warn("youcam_unexpected_response", { step });
-          throw new ApiError("provider_error");
+          throw new ApiError("provider_error", undefined, {
+            step,
+            providerStatus: res.status,
+            providerCode: "unexpected_response",
+          });
         }
         return parsed.data;
       }
@@ -237,10 +238,7 @@ export function createYouCamProvider(options: YouCamOptions): SkinProvider {
 
       // 2. Upload the bytes to the presigned URL (no Bearer header: it would break the signature).
       const put = await send("upload", upload.url, { method: upload.method, headers: upload.headers, body: image });
-      if (!put.ok) {
-        logger.warn("youcam_upload_failed", { status: put.status });
-        throw new ApiError("provider_error");
-      }
+      if (!put.ok) throw new ApiError("provider_error", undefined, { step: "upload", providerStatus: put.status });
 
       // 3. Start the task.
       const task = await api("task", "/s2s/v2.1/task/skin-analysis", TaskCreated, {
@@ -252,24 +250,26 @@ export function createYouCamProvider(options: YouCamOptions): SkinProvider {
 
       // 4. Poll until it finishes or the budget runs out.
       for (;;) {
-        if (now() + pollIntervalMs > deadline) throw new ApiError("timeout");
+        if (now() + pollIntervalMs > deadline) {
+          throw new ApiError("timeout", undefined, { step: "poll", providerCode: "deadline" });
+        }
         await sleep(pollIntervalMs);
         const { data } = await api("poll", taskPath, TaskStatus);
 
         if (data.task_status === "success") {
           const result = parseResults(data.results, concerns);
           if (result.concerns.length === 0) {
-            logger.warn("youcam_empty_results", { requested: concerns });
-            throw new ApiError("provider_error");
+            throw new ApiError("provider_error", undefined, { step: "poll", providerCode: "empty_results" });
           }
-          return { provider: "youcam", ...result };
+          return { provider: "youcam", ...result, usedSides: false };
         }
         if (data.task_status === "error") {
           const code = (data.error && TASK_ERRORS.get(data.error)) || "provider_error";
-          const meta = { providerCode: data.error, providerMessage: data.error_message, code };
-          if (code === "provider_error") logger.warn("youcam_task_error", meta);
-          else logger.info("youcam_task_rejected_photo", meta);
-          throw new ApiError(code);
+          throw new ApiError(code, undefined, {
+            step: "poll",
+            providerCode: data.error ?? undefined,
+            providerMessage: data.error_message?.slice(0, 200) ?? undefined,
+          });
         }
         // "running" (or anything unknown): keep polling
       }

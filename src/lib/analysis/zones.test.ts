@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { countMask, intersect, rasterizePolygon } from "./geometry";
 import { makeFixtureLandmarks } from "./fixtures";
-import { EYE_A, ZONE_IDS, buildZones } from "./zones";
+import { EYE_A, ZONE_IDS, buildZones, facingCheek } from "./zones";
 
 describe("buildZones", () => {
   const lm = makeFixtureLandmarks(400);
@@ -33,5 +33,26 @@ describe("buildZones", () => {
       }
     }
     expect(sumX / n).toBeLessThan(200);
+  });
+});
+
+describe("facingCheek", () => {
+  const zones = buildZones(makeFixtureLandmarks(400), 400, 400);
+  const keepX = (x0: number, x1: number) =>
+    rasterizePolygon(
+      [
+        { x: x0, y: 0 },
+        { x: x1, y: 0 },
+        { x: x1, y: 400 },
+        { x: x0, y: 400 },
+      ],
+      400,
+      400,
+    );
+
+  it("picks the cheek that shows more, as the one facing the camera", () => {
+    // Head turned: the far cheek is partly hidden behind the face edge.
+    expect(facingCheek({ ...zones, cheekR: intersect(zones.cheekR, keepX(0, 250)) })).toBe("cheekL");
+    expect(facingCheek({ ...zones, cheekL: intersect(zones.cheekL, keepX(150, 400)) })).toBe("cheekR");
   });
 });

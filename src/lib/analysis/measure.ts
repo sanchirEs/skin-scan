@@ -19,7 +19,18 @@ function median(values: number[]): number {
 
 const mean = (v: number[]) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : NaN);
 
-export function measure(img: Rgba, zones: Record<ZoneId, Mask>): MeasureResult {
+export type MeasureOptions = {
+  /**
+   * Only read (and require) these zones, e.g. the one cheek a side photo shows.
+   * Include at least one cheek: the exposure checks run on the cheeks.
+   * Measures whose zones are all left out (dark circles, shine) come back NaN.
+   * Defaults to every zone, which is the front photo.
+   */
+  only?: readonly ZoneId[];
+};
+
+export function measure(img: Rgba, zones: Record<ZoneId, Mask>, opts: MeasureOptions = {}): MeasureResult {
+  const ids = opts.only ? ZONE_IDS.filter((id) => opts.only!.includes(id)) : ZONE_IDS;
   const { width: w, height: h, data } = img;
   const n = w * h;
   const L = new Float32Array(n);
@@ -41,9 +52,11 @@ export function measure(img: Rgba, zones: Record<ZoneId, Mask>): MeasureResult {
     spec[i] = isSpecular(r, g, b) ? 1 : 0;
   };
 
-  const zoneIdx = {} as Record<ZoneId, number[]>;
-  const skinIdx = {} as Record<ZoneId, number[]>;
-  for (const id of ZONE_IDS) {
+  // Zones left out of `only` stay empty.
+  const noZones = () => Object.fromEntries(ZONE_IDS.map((id) => [id, [] as number[]])) as Record<ZoneId, number[]>;
+  const zoneIdx = noZones();
+  const skinIdx = noZones();
+  for (const id of ids) {
     const all: number[] = [];
     const skin: number[] = [];
     const m = zones[id].data;
@@ -65,11 +78,11 @@ export function measure(img: Rgba, zones: Record<ZoneId, Mask>): MeasureResult {
   const clipped = cheekAll.filter((i) => spec[i] || L[i] > 97).length / cheekAll.length;
   if (clipped > 0.25) return { ok: false, reason: "overexposed" };
   if (median(cheekAll.map((i) => L[i])) < 18) return { ok: false, reason: "underexposed" };
-  for (const id of ZONE_IDS) {
+  for (const id of ids) {
     if (skinIdx[id].length < MIN_PIXELS) return { ok: false, reason: "too-few-pixels" };
   }
 
-  const allSkin = ZONE_IDS.flatMap((id) => skinIdx[id]);
+  const allSkin = ids.flatMap((id) => skinIdx[id]);
   const cheeks = [...skinIdx.cheekL, ...skinIdx.cheekR];
   const cheeksNose = [...cheeks, ...skinIdx.nose];
 

@@ -55,12 +55,21 @@ export function checkQuality(q: QualityInput): Hint {
   const { yaw, pitch, roll } = q.poseDeg;
   if (Math.abs(yaw) > LIMITS.maxYawPitch || Math.abs(pitch) > LIMITS.maxYawPitch || Math.abs(roll) > LIMITS.maxRoll)
     return "straight";
+  const light = lightProblem(q);
+  if (light) return light;
+  if (q.motion > LIMITS.maxMotion) return "hold-still";
+  return "ok";
+}
+
+export type LightProblem = "more-light" | "less-light" | "even-light";
+
+/** The light checks alone, in the same order: used where the head is meant to be turned. */
+export function lightProblem(q: Pick<QualityInput, "cheekL" | "cheekR" | "clippedShare">): LightProblem | null {
   const light = (q.cheekL + q.cheekR) / 2;
   if (light < LIMITS.minLight) return "more-light";
   if (q.clippedShare > LIMITS.maxClipped || light > LIMITS.maxLight) return "less-light";
   if (Math.abs(q.cheekL - q.cheekR) > LIMITS.maxSideDiff) return "even-light";
-  if (q.motion > LIMITS.maxMotion) return "hold-still";
-  return "ok";
+  return null;
 }
 
 /** Yaw, pitch, roll in degrees from a column-major 4x4 transform (MediaPipe layout). */

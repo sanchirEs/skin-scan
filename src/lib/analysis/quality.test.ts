@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkQuality, laplacianVariance, poseFromMatrix, type QualityInput } from "./quality";
+import { checkQuality, laplacianVariance, lightProblem, poseFromMatrix, type QualityInput } from "./quality";
 
 const good: QualityInput = {
   faces: 1,
@@ -80,5 +80,28 @@ describe("laplacianVariance", () => {
       }
     }
     expect(laplacianVariance(sharp, w, h)).toBeGreaterThan(laplacianVariance(soft, w, h));
+  });
+});
+
+describe("lightProblem", () => {
+  const light = { cheekL: 60, cheekR: 62, clippedShare: 0.01 };
+
+  it("finds no problem in good, even light", () => {
+    expect(lightProblem(light)).toBeNull();
+  });
+
+  it.each<[Partial<typeof light>, string]>([
+    [{ cheekL: 18, cheekR: 19 }, "more-light"],
+    [{ cheekL: 95, cheekR: 94 }, "less-light"],
+    [{ clippedShare: 0.3 }, "less-light"],
+    [{ cheekL: 50, cheekR: 64 }, "even-light"],
+  ])("names the light problem for %o", (patch, hint) => {
+    expect(lightProblem({ ...light, ...patch })).toBe(hint);
+  });
+
+  it("judges light the same way whatever the head pose", () => {
+    const turned = withChange({ poseDeg: { yaw: 30, pitch: 0, roll: 0 }, cheekL: 18, cheekR: 19 });
+    expect(checkQuality(turned)).toBe("straight");
+    expect(lightProblem(turned)).toBe("more-light");
   });
 });

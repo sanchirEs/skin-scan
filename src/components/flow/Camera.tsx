@@ -1,43 +1,205 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { M } from "@/config/messages";
 import type { Hint } from "@/lib/analysis/quality";
+import {
+  SIDE,
+  sideLabel,
+  sideStep,
+  skipSides,
+  startSides,
+  type SideHint,
+  type SideId,
+  type SideSample,
+  type SideState,
+} from "@/lib/analysis/sides";
+import { demoSideSample } from "@/lib/demo";
 import { cameraErrorKind } from "@/lib/env/camera-support";
+import type { SidePhotos } from "@/lib/vision/analyze-frame";
 import { captureBurst, liveQuality } from "@/lib/vision/capture";
 import { loadLandmarker } from "@/lib/vision/landmarker";
 import { withTimeout } from "@/lib/timeout";
 import { Button } from "../ui/Button";
 import { CameraProblem } from "./CameraProblem";
-import { useFlow, type FlowState } from "./flow";
+import { useFlow, type Captured, type FlowState } from "./flow";
 
 const HOLD_MS = 1000;
 /** A permission prompt or camera start that hangs (some in-app browsers) gives up here. */
 const CAMERA_TIMEOUT_MS = 20_000;
 /** About 18 MB of model and runtime on a slow phone connection. */
 const MODEL_TIMEOUT_MS = 30_000;
+/** Demo mode: how long the front "photo" takes, and the pace of the simulated side frames. */
+const DEMO_FRONT_MS = 1600;
+const DEMO_FRAME_MS = 66;
+
+type Phase = "front" | SideId;
+type View = { phase: Phase; hint: Hint; sideHint: SideHint; hold: number; capturing: boolean };
+const START: View = { phase: "front", hint: "no-face", sideHint: "turn", hold: 0, capturing: false };
+
+/**
+ * Wiring for the side steps in lib/analysis/sides.ts: feeds it one sample per
+ * frame, takes each photo it asks for, and hands the photos over at the end.
+ * Shared by the live camera and the demo.
+ */
+function sideRunner(io: {
+  takePhoto: () => Promise<ImageBitmap | null>;
+  show: (v: Partial<View>) => void;
+  finish: (photos: SidePhotos<ImageBitmap>) => void;
+}) {
+  let state: SideState | null = null;
+  let busy = false;
+  let over = false;
+  const photos: SidePhotos<ImageBitmap> = {};
+
+  const end = () => {
+    if (over) return;
+    over = true;
+    io.finish({ ...photos });
+  };
+  // After a photo or a timeout: show the next step's prompt, or finish.
+  const next = (s: SideState) =>
+    s.step === "done" ? end() : io.show({ phase: s.step, sideHint: "turn", hold: 0, capturing: false });
+
+  return {
+    get active() {
+      return state !== null && !over;
+    },
+    get busy() {
+      return busy;
+    },
+    start(now: number) {
+      state = startSides(now);
+      next(state);
+    },
+    skip() {
+      if (!state || over) return;
+      state = skipSides(state).state;
+      // A photo being taken right now is kept: its callback finishes.
+      if (!busy) end();
+    },
+    sample(q: SideSample, now: number) {
+      if (!state || busy || over) return;
+      const out = sideStep(state, q, now);
+      const s = (state = out.state);
+      if (out.action === "done" || out.action === "advance") return next(s);
+      io.show({ sideHint: out.hint, hold: out.hold });
+      if (out.action !== "capture" || !out.capture) return;
+      const label = sideLabel(out.capture.sign);
+      busy = true;
+      io.show({ capturing: true });
+      io.takePhoto().then(
+        (bitmap) => {
+          busy = false;
+          if (over) return bitmap?.close();
+          if (bitmap) {
+            photos[label]?.close();
+            photos[label] = bitmap;
+          }
+          // `state` may have been skipped to "done" while the photo was taken.
+          next(state ?? s);
+        },
+        // The camera stopped mid-photo: keep what was already taken.
+        () => {
+          busy = false;
+          end();
+        },
+      );
+    },
+    /** Unmounted before the end: free the photos nobody will read. */
+    dispose() {
+      if (over) return;
+      over = true;
+      photos.left?.close();
+      photos.right?.close();
+    },
+  };
+}
+
+function sideMessage(phase: SideId, hint: SideHint): string {
+  if (hint === "turn") return M.camera.sides.prompts[phase];
+  if (hint === "hold" || hint === "back") return M.camera.sides.hints[hint];
+  return M.camera.hints[hint];
+}
 
 export function Camera() {
   const { state, dispatch } = useFlow();
+  const reduce = useReducedMotion();
   const videoRef = useRef<HTMLVideoElement>(null);
+  /** Set by the running effect: ends the side steps with what was taken. */
+  const skipRef = useRef<() => void>(() => {});
   const [attempt, setAttempt] = useState(0);
   const [ready, setReady] = useState(false);
-  const [hint, setHint] = useState<Hint>("no-face");
-  const [hold, setHold] = useState(0);
-  const [capturing, setCapturing] = useState(false);
+  const [view, setView] = useState<View>(START);
 
   useEffect(() => {
+    let cancelled = false;
+    /** Once dispatched, the flow owns the bitmaps. Until then this effect frees them. */
+    let handedOver = false;
+    const show = (p: Partial<View>) => {
+      if (cancelled) return;
+      setView((v) => ((Object.keys(p) as (keyof View)[]).every((k) => v[k] === p[k]) ? v : { ...v, ...p }));
+    };
+    const hand = (captured: Captured) => {
+      handedOver = true;
+      dispatch({ type: "captured", captured });
+    };
+
     if (state.demo) {
-      const t = setTimeout(() => dispatch({ type: "captured", captured: { bitmap: null, quality: {} } }), 1600);
-      return () => clearTimeout(t);
+      // No camera and no bitmaps: the side steps run on a simulated head turn.
+      let frames = 0;
+      let sidesStart = 0;
+      const sides = sideRunner({
+        takePhoto: async () => null,
+        show,
+        finish: () => {
+          clearInterval(frames);
+          if (!cancelled) hand({ bitmap: null, quality: {}, sides: {} });
+        },
+      });
+      skipRef.current = () => sides.skip();
+      const t = setTimeout(() => {
+        sidesStart = performance.now();
+        sides.start(sidesStart);
+        frames = window.setInterval(() => {
+          const now = performance.now();
+          sides.sample(demoSideSample(now - sidesStart), now);
+        }, DEMO_FRAME_MS);
+      }, DEMO_FRONT_MS);
+      return () => {
+        cancelled = true;
+        clearTimeout(t);
+        clearInterval(frames);
+        sides.dispose();
+      };
     }
 
-    let cancelled = false;
     let stream: MediaStream | null = null;
     let raf = 0;
+    let front: { bitmap: ImageBitmap; quality: Record<string, number> } | null = null;
     const stop = () => stream?.getTracks().forEach((t) => t.stop());
     const fail = (kind: NonNullable<FlowState["problem"]>) => !cancelled && dispatch({ type: "problem", kind });
+
+    const sides = sideRunner({
+      takePhoto: () => {
+        const video = videoRef.current;
+        if (!video) return Promise.reject(new Error("no video"));
+        return captureBurst(video, SIDE.frames).then((r) => r.bitmap);
+      },
+      show,
+      finish: (photos) => {
+        cancelAnimationFrame(raf);
+        stop();
+        if (cancelled || !front) {
+          photos.left?.close();
+          photos.right?.close();
+          return;
+        }
+        hand({ ...front, sides: photos });
+      },
+    });
+    skipRef.current = () => sides.skip();
 
     (async () => {
       const ua = navigator.userAgent;
@@ -84,12 +246,14 @@ export function Camera() {
       const tick = (now: number) => {
         if (cancelled) return;
         raf = requestAnimationFrame(tick);
-        if (busy || now - last < 66 || video.readyState < 2) return;
+        if (busy || sides.busy || now - last < 66 || video.readyState < 2) return;
         last = now;
         let r: ReturnType<typeof liveQuality>;
         try {
           r = liveQuality(video, landmarker, prev, now);
         } catch {
+          // The front photo is already good: go on with whatever side photos were taken.
+          if (sides.active) return sides.skip();
           // e.g. the graphics context was lost: say so instead of freezing on the last hint.
           cancelAnimationFrame(raf);
           stop();
@@ -97,35 +261,39 @@ export function Camera() {
           return;
         }
         prev = r.landmarks;
-        setHint(r.hint);
+
+        // After the front photo: the two guided side photos.
+        if (sides.active) {
+          sides.sample({ faces: r.faces, yaw: r.metrics.yaw, light: r.light, motion: r.metrics.motion }, now);
+          return;
+        }
+
         if (r.hint !== "ok") {
           okSince = null;
-          setHold(0);
+          show({ hint: r.hint, hold: 0 });
           return;
         }
         okSince ??= now;
-        setHold(Math.min(1, (now - okSince) / HOLD_MS));
+        show({ hint: r.hint, hold: Math.min(1, (now - okSince) / HOLD_MS) });
         if (now - okSince < HOLD_MS) return;
         busy = true;
-        setCapturing(true);
+        show({ capturing: true });
         captureBurst(video)
           .then(({ bitmap, sharpness }) => {
-            stop();
             if (cancelled) return bitmap.close();
-            dispatch({
-              type: "captured",
-              captured: {
-                bitmap,
-                quality: { sharpness, faceWidth: r.metrics.faceWidth, light: r.metrics.light, yaw: r.metrics.yaw },
-              },
-            });
+            front = {
+              bitmap,
+              quality: { sharpness, faceWidth: r.metrics.faceWidth, light: r.metrics.light, yaw: r.metrics.yaw },
+            };
+            busy = false;
+            prev = null;
+            sides.start(performance.now());
           })
           .catch(() => {
             // The camera stopped mid-capture: show the problem screen with a retry, never a frozen "Scanning".
             busy = false;
             okSince = null;
-            setCapturing(false);
-            setHold(0);
+            show({ capturing: false, hold: 0 });
             cancelAnimationFrame(raf);
             stop();
             fail("unknown");
@@ -138,6 +306,8 @@ export function Camera() {
       cancelled = true;
       cancelAnimationFrame(raf);
       stop();
+      sides.dispose();
+      if (!handedOver) front?.bitmap.close();
     };
   }, [attempt, state.demo, dispatch]);
 
@@ -148,6 +318,7 @@ export function Camera() {
         onRetry={() => {
           dispatch({ type: "problem", kind: null });
           setReady(false);
+          setView(START);
           setAttempt((n) => n + 1);
         }}
         onBack={() => dispatch({ type: "go", step: "tips", dir: -1 })}
@@ -156,9 +327,16 @@ export function Camera() {
   }
 
   const isReady = ready || state.demo;
-  const shownHint: Hint = state.demo ? "ok" : hint;
-  const message = capturing ? M.camera.scanning : isReady ? M.camera.hints[shownHint] : M.camera.preparing;
-  const good = shownHint === "ok" || capturing;
+  const side = view.phase !== "front" ? view.phase : null;
+  const frontHint: Hint = state.demo ? "ok" : view.hint;
+  const message = view.capturing
+    ? M.camera.scanning
+    : !isReady
+      ? M.camera.preparing
+      : side
+        ? sideMessage(side, view.sideHint)
+        : M.camera.hints[frontHint];
+  const good = view.capturing || (side ? view.sideHint === "hold" : frontHint === "ok");
 
   return (
     // Full white: the screen itself is the light on the face.
@@ -190,9 +368,9 @@ export function Camera() {
           <AnimatePresence mode="wait" initial={false}>
             <motion.p
               key={message}
-              initial={{ opacity: 0, y: 6 }}
+              initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6, transition: { duration: 0.12, ease: [0.4, 0, 1, 1] } }}
+              exit={{ opacity: 0, ...(reduce ? {} : { y: -6 }), transition: { duration: 0.12, ease: [0.4, 0, 1, 1] } }}
               transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
               className="type-display text-center text-[25px]"
             >
@@ -201,15 +379,24 @@ export function Camera() {
           </AnimatePresence>
         </div>
 
-        {/* Hold indicator: four pads fill while the face holds still. */}
+        {/* Hold indicator: four pads fill while the face holds still (front, then each side). */}
         <div className="mt-3 flex gap-1.5" aria-hidden>
           {[0, 1, 2, 3].map((i) => (
             <span
               key={i}
               className="block h-2.5 w-7 rounded-[3px] transition-colors duration-150"
-              style={{ backgroundColor: capturing || hold > (i + 0.5) / 4 ? "var(--cap)" : "var(--rule)" }}
+              style={{ backgroundColor: view.capturing || view.hold > (i + 0.5) / 4 ? "var(--cap)" : "var(--rule)" }}
             />
           ))}
+        </div>
+
+        {/* Space kept even before the side steps, so the oval does not jump when the button appears. */}
+        <div className="mt-4 flex h-11 items-center justify-center">
+          {side && (
+            <Button variant="quiet" onClick={() => skipRef.current()}>
+              {M.camera.sides.skip}
+            </Button>
+          )}
         </div>
       </div>
     </div>

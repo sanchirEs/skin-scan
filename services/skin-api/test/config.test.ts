@@ -7,11 +7,27 @@ describe("loadConfig", () => {
       port: 8080,
       provider: "youcam",
       youcam: { apiKey: undefined, baseUrl: "https://yce-api-01.makeupar.com" },
+      ailabtools: { apiKey: undefined, baseUrl: "https://www.ailabapi.com", tier: "pro" },
       concerns: ["acne", "wrinkles", "pores", "texture"],
       allowedOrigins: [],
       rateLimitPerMin: 6,
       maxImageBytes: 5_000_000,
     });
+  });
+
+  it("parses the ailabtools variables", () => {
+    const config = loadConfig({
+      SKIN_PROVIDER: "ailabtools",
+      AILABTOOLS_API_KEY: " ail-key ",
+      AILAB_BASE_URL: "https://ailab.example/",
+      AILAB_TIER: "advanced",
+    });
+    expect(config.provider).toBe("ailabtools");
+    expect(config.ailabtools).toEqual({ apiKey: "ail-key", baseUrl: "https://ailab.example", tier: "advanced" });
+  });
+
+  it("rejects an unknown AILAB_TIER", () => {
+    expect(() => loadConfig({ AILAB_TIER: "basic" })).toThrow(/AILAB_TIER/);
   });
 
   it("parses every variable", () => {
@@ -29,6 +45,7 @@ describe("loadConfig", () => {
       port: 3001,
       provider: "mock",
       youcam: { apiKey: "key-with-spaces", baseUrl: "https://example.test" },
+      ailabtools: { apiKey: undefined, baseUrl: "https://www.ailabapi.com", tier: "pro" },
       concerns: ["redness", "acne"],
       allowedOrigins: ["http://localhost:3000", "https://*-team.vercel.app"],
       rateLimitPerMin: 10,

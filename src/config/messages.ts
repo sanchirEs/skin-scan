@@ -1,5 +1,6 @@
 // Every word the customer reads. Cosmetic language only: "signs of", never a diagnosis.
 import type { Hint } from "@/lib/analysis/quality";
+import type { SideHint, SideId } from "@/lib/analysis/sides";
 import type { Level, MeasureId } from "@/lib/analysis/types";
 import type { ToneCategory } from "@/lib/color/convert";
 import type { AiConcernId } from "@/lib/ai/types";
@@ -15,13 +16,13 @@ export const M = {
     example: "(Example reading.)",
     keyNote: "Each pad is read against a key, like a test strip, so you see exactly where your skin sits.",
     start: "Start skin check",
-    notice: "We never store your photo. We save only anonymous numbers from each scan.",
+    notice: "We never store your photos. We save only anonymous numbers from each scan.",
     privacy: "How we handle your data",
   },
 
   tips: {
     aiNotice:
-      "With the AI check, your face photo is sent securely to our AI partner to find acne, wrinkles and pores. We don't store it.",
+      "With the AI check, your front and side photos are sent securely to our AI partner to find acne, wrinkles and pores. We don't store them. Otherwise, the side photos are only used on this phone.",
     startAi: "Scan with AI check",
     startLocal: "Scan on this phone only",
     title: "Before you scan",
@@ -52,6 +53,18 @@ export const M = {
       "hold-still": "Hold still",
       ok: "Perfect. Hold still",
     } satisfies Record<Hint, string>,
+    /** After the front photo: one photo turned to each side. */
+    sides: {
+      prompts: {
+        side1: "Now turn your head slowly to your left",
+        side2: "Now turn slowly to your right",
+      } satisfies Record<SideId, string>,
+      hints: {
+        hold: "Hold there",
+        back: "Turn back a little",
+      } satisfies Partial<Record<SideHint, string>>,
+      skip: "Skip side photos",
+    },
     problems: {
       denied: {
         title: "The camera is blocked",

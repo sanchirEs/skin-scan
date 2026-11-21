@@ -29,6 +29,7 @@ export function createMockProvider(): SkinProvider {
           return makeConcern(id, score(i), null, regions);
         }),
         skinAge: 18 + (hash[31]! % 40),
+        usedSides: false,
       };
     },
   };

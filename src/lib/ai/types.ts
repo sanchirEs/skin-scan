@@ -29,7 +29,13 @@ export type AiConcern = {
   regions: { name: string; score: number }[];
 };
 
-export type AiResult = { provider: string; concerns: AiConcern[]; skinAge: number | null };
+export type AiResult = {
+  provider: string;
+  concerns: AiConcern[];
+  skinAge: number | null;
+  /** The service read the side photos too. Missing means front only. */
+  usedSides?: boolean;
+};
 
 export type AiErrorCode =
   | "bad_image"
