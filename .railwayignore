@@ -1,0 +1,14 @@
+# Upload for the "web" Railway service (the Next.js app). Railway rebuilds it:
+# npm ci runs scripts/fetch-mediapipe.mjs, which restores public/mediapipe.
+.next
+node_modules
+public/mediapipe
+# Local notes and tooling, not part of the site.
+.impeccable
+.superpowers
+.claude
+.vercel
+docs
+*.log
+# The skin-api service deploys on its own from services/skin-api.
+services

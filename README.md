@@ -23,12 +23,31 @@ Dev-only URL switches (switched off in production):
 | `/?demo=1&data=worst` | Same, with a worst-case catalog (long names, $1,249.50 prices, empty ingredient lists, an unflagged retinoid). A toggle at the top switches Demo / Worst case / Empty / One |
 | `/?debug=1` | Shows the raw measurements under the report. Use it to tune thresholds on real faces |
 
-The camera only works over https or on localhost. To test on a real phone, deploy to Vercel (a preview link is fine).
+The camera only works over https or on localhost.
+
+## Hosting
+
+Both parts run on Railway, in the `skin-scan` project:
+
+| Service | Public URL | Deploys from |
+|---|---|---|
+| `web` (this Next.js app) | https://web-production-de0af252.up.railway.app | repo root, `railway up --service web` (`.railwayignore` leaves out `services/`) |
+| `skin-api` (AI check) | https://skin-api-production-19188e18.up.railway.app | `services/skin-api` (see its README) |
+
+`web` needs `NEXT_PUBLIC_SKIN_API_URL`, set to `https://${{skin-api.RAILWAY_PUBLIC_DOMAIN}}`. It is read at build time, so redeploy `web` after changing it. Any new site address must also be added to `ALLOWED_ORIGINS` on `skin-api`, or the AI check is refused.
+
+The repo folder may be linked to a different Railway project, so pass the skin-scan IDs when deploying `web`:
+
+```bash
+railway up --project 7b44c9ca-fe47-49d4-ab9d-eb3ee36972e1 --environment 757d20fc-b130-4a23-81cb-cca0c2a2fadb --service web --detach
+```
+
+Vercel previews still work too, but they ask for a Vercel login.
 
 ## Connect Supabase
 
 1. Create a Supabase project and run `supabase/migrations/0001_init.sql` in its SQL editor.
-2. Set these on Vercel (or in `.env.local`):
+2. Set these on the Railway `web` service (or in `.env.local`):
    - `SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY` (server only, never `NEXT_PUBLIC_`)
 3. Orders appear in the `orders` table. The `scans` table holds anonymous numbers: count `ordered = true` against all rows to get your scan-to-order rate.
