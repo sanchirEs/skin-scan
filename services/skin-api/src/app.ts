@@ -128,11 +128,12 @@ export function createApp({ config, provider, logger = consoleLogger, now = Date
 
     const started = now();
     try {
-      const result = await provider.analyze({ ...photos, concerns: config.concerns });
+      const { sidesRejected, ...result } = await provider.analyze({ ...photos, concerns: config.concerns });
       logger.info("analyze_ok", {
         provider: provider.name,
         bytes: photos.image.byteLength,
         usedSides: result.usedSides,
+        ...(sidesRejected ? { sidesRejected } : {}),
         ms: now() - started,
       });
       return c.json(result);

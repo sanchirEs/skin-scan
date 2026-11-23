@@ -45,6 +45,8 @@ const KEY_REJECTED = "The API key was rejected by the skin analysis provider.";
 const OUT_OF_CREDITS = "The skin analysis provider is out of credits.";
 // Our contract has no code for blurry / covered faces, so they are provider_error with a helpful message.
 const LOW_QUALITY = "The photo is blurry or the face is covered. Please retake it in good light.";
+const UNRECOGNIZABLE = "The face could not be read clearly. Please retake the photo facing the camera in good light.";
+const ONE_FACE = "Please make sure only one face is in the photo.";
 
 const ERROR_CODES = new Map<string, [ErrorCode, string?]>([
   ["ERROR_NO_FACE_IN_FILE", ["no_face"]],
@@ -69,6 +71,17 @@ const ERROR_CODES = new Map<string, [ErrorCode, string?]>([
   ["ERROR_BLURRY_FACE", ["provider_error", LOW_QUALITY]],
   ["ERROR_QUALITY_SCORE_NOT_MEET_REQUIREMENTS", ["provider_error", LOW_QUALITY]],
   ["ERROR_OBSTRUCTED_FACE", ["provider_error", LOW_QUALITY]],
+  ["ERROR_FACE_UNRECOGNIZABLE", ["provider_error", UNRECOGNIZABLE]],
+  ["FILE_CONTENT_NON_COMPLIANCE", ["provider_error", UNRECOGNIZABLE]],
+  ["ERROR_NO_RECOGNITION_TARGET_DETECTED", ["no_face"]],
+  ["ERROR_FACE_COUNT_INVALID", ["provider_error", ONE_FACE]],
+  ["ERROR_LEFT_EYE_OCCLUSION_TOO_HIGH", ["provider_error", LOW_QUALITY]],
+  ["ERROR_RIGHT_EYE_OCCLUSION_TOO_HIGH", ["provider_error", LOW_QUALITY]],
+  ["ERROR_LEFT_FACE_OCCLUSION_TOO_HIGH", ["provider_error", LOW_QUALITY]],
+  ["ERROR_RIGHT_FACE_OCCLUSION_TOO_HIGH", ["provider_error", LOW_QUALITY]],
+  ["ERROR_CHIN_OCCLUSION_TOO_HIGH", ["provider_error", LOW_QUALITY]],
+  ["ERROR_NOSE_OCCLUSION_TOO_HIGH", ["provider_error", LOW_QUALITY]],
+  ["ERROR_MOUTH_OCCLUSION_TOO_HIGH", ["provider_error", LOW_QUALITY]],
   ["ERROR_UNAUTHORIZED", ["provider_error", KEY_REJECTED]],
   ["ERROR_USER_NOT_EXISTS", ["provider_error", KEY_REJECTED]],
   ["ERROR_APPLICATIONS_NOT_EXISTS", ["provider_error", KEY_REJECTED]],
@@ -81,6 +94,12 @@ const ERROR_CODES = new Map<string, [ErrorCode, string?]>([
   ["ERROR_GATEWAY_TIMEOUT", ["timeout"]],
   ["AI_SERVICE_TIMEOUT", ["timeout"]],
 ]);
+
+/**
+ * HTTP statuses AILabTools uses for "this photo is not usable" (422 for face problems, 400/413/415 for the file).
+ * Key (401), credit (402/429) and server (5xx) failures are not about the photos, so they are never retried.
+ */
+const PHOTO_REJECTED = new Set([400, 413, 415, 422]);
 
 function failure(providerStatus: number, body: unknown): ApiError {
   const providerCode = str(at(body, "error_detail", "code"));
@@ -291,50 +310,72 @@ export function createAilabProvider(options: AilabOptions): SkinProvider {
         throw new ApiError("bad_image", "This analysis provider accepts JPEG photos only.", { step: "validate" });
       }
 
-      const form = new FormData();
-      form.append("image", new Blob([image], { type: "image/jpeg" }), "face.jpg");
-      // Only the maps of requested concerns (they are large base64 images).
-      const maps = [...new Set(concerns.flatMap((id) => specs[id]?.map ?? []))];
-      if (maps.length > 0) form.append("return_maps", maps.join(","));
-
       // Pro only: "left_side_image" / "right_side_image" (JPG; the docs recommend the face turned ~45 degrees).
-      let usedSides = false;
-      if (tier === "pro") {
-        for (const side of ["left", "right"] as const) {
-          const bytes = sides?.[side];
-          if (bytes && detectImageType(bytes) === "image/jpeg") {
+      const sidePhotos =
+        tier === "pro"
+          ? (["left", "right"] as const).flatMap((side) => {
+              const bytes = sides?.[side];
+              return bytes && detectImageType(bytes) === "image/jpeg" ? [{ side, bytes }] : [];
+            })
+          : [];
+
+      const send = async (withSides: boolean): Promise<unknown> => {
+        const form = new FormData();
+        form.append("image", new Blob([image], { type: "image/jpeg" }), "face.jpg");
+        // Only the maps of requested concerns (they are large base64 images).
+        const maps = [...new Set(concerns.flatMap((id) => specs[id]?.map ?? []))];
+        if (maps.length > 0) form.append("return_maps", maps.join(","));
+        if (withSides) {
+          for (const { side, bytes } of sidePhotos) {
             form.append(`${side}_side_image`, new Blob([bytes], { type: "image/jpeg" }), `${side}.jpg`);
-            usedSides = true;
           }
         }
-      }
 
-      let res: Response;
+        let res: Response;
+        try {
+          res = await fetchFn(baseUrl + PATHS[tier], {
+            method: "POST",
+            headers: { "ailabapi-api-key": apiKey },
+            body: form, // fetch sets the multipart Content-Type with its boundary
+            signal: AbortSignal.timeout(timeoutMs),
+          });
+        } catch (err) {
+          throw fetchFailure(err, "analyze");
+        }
+
+        const body: unknown = await res.json().catch(() => null);
+        const errorCode = num(at(body, "error_code"));
+        if (!res.ok || (errorCode !== undefined && errorCode !== 0)) {
+          const err = failure(res.ok ? (errorCode ?? res.status) : res.status, body);
+          err.detail.sidesSent = withSides ? sidePhotos.length : 0;
+          throw err;
+        }
+        if (result(body) === undefined) {
+          throw new ApiError("provider_error", undefined, { step: "analyze", providerStatus: res.status, providerCode: "unexpected_response" });
+        }
+        return body;
+      };
+
+      // A side photo AILabTools cannot read fails the whole request (seen: 422 ERROR_FACE_UNRECOGNIZABLE).
+      // Only successful calls are billed, so retry once with the front photo alone; side photos are a bonus.
+      let body: unknown;
+      let usedSides = sidePhotos.length > 0;
+      let sidesRejected: string | undefined;
       try {
-        res = await fetchFn(baseUrl + PATHS[tier], {
-          method: "POST",
-          headers: { "ailabapi-api-key": apiKey },
-          body: form, // fetch sets the multipart Content-Type with its boundary
-          signal: AbortSignal.timeout(timeoutMs),
-        });
+        body = await send(usedSides);
       } catch (err) {
-        throw fetchFailure(err, "analyze");
-      }
-
-      const body: unknown = await res.json().catch(() => null);
-      const errorCode = num(at(body, "error_code"));
-      if (!res.ok || (errorCode !== undefined && errorCode !== 0)) {
-        throw failure(res.ok ? (errorCode ?? res.status) : res.status, body);
-      }
-      if (result(body) === undefined) {
-        throw new ApiError("provider_error", undefined, { step: "analyze", providerStatus: res.status, providerCode: "unexpected_response" });
+        const status = err instanceof ApiError ? err.detail.providerStatus : undefined;
+        if (!usedSides || status === undefined || !PHOTO_REJECTED.has(status)) throw err;
+        sidesRejected = (err as ApiError).detail.providerCode ?? String(status);
+        usedSides = false;
+        body = await send(false);
       }
 
       const normalized = normalize(body, concerns, specs, maxMaskBytes);
       if (normalized.concerns.length === 0) {
-        throw new ApiError("provider_error", undefined, { step: "analyze", providerStatus: res.status, providerCode: "empty_results" });
+        throw new ApiError("provider_error", undefined, { step: "analyze", providerStatus: 200, providerCode: "empty_results" });
       }
-      return { provider: "ailabtools", ...normalized, usedSides };
+      return { provider: "ailabtools", ...normalized, usedSides, ...(sidesRejected ? { sidesRejected } : {}) };
     },
   };
 }

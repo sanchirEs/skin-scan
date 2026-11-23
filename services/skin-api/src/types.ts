@@ -44,6 +44,11 @@ export interface AnalysisResult {
   skinAge: number | null;
   /** true only if the provider actually analyzed the side photos. */
   usedSides: boolean;
+  /**
+   * Server log only, stripped before the response: the provider's code when it rejected the side photos
+   * and the front photo was analyzed alone.
+   */
+  sidesRejected?: string;
 }
 
 export interface AnalyzeInput {

@@ -140,8 +140,9 @@ export function advancedSample() {
   });
 }
 
-/** In-memory stand-in for the AILabTools API. No network. */
-export function fakeAilab(reply: Reply = { body: proSample() }) {
+/** In-memory stand-in for the AILabTools API. No network. An array answers call by call; its last reply repeats. */
+export function fakeAilab(reply: Reply | Reply[] = { body: proSample() }) {
+  const replies = Array.isArray(reply) ? reply : [reply];
   const calls: AilabCall[] = [];
   const fakeFetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
     const fields: Record<string, Field> = {};
@@ -160,7 +161,8 @@ export function fakeAilab(reply: Reply = { body: proSample() }) {
       fields,
       signal: init.signal,
     });
-    return Response.json(reply.body, { status: reply.status ?? 200 });
+    const next = replies[Math.min(calls.length - 1, replies.length - 1)]!;
+    return Response.json(next.body, { status: next.status ?? 200 });
   }) as typeof fetch;
   return { fetch: fakeFetch, calls };
 }

@@ -67,6 +67,24 @@ function cropFace(bitmap: ImageBitmap, lm: NormalizedLandmark[]) {
   return { region: { cx, cy, cw, ch }, canvas, img, pts, w, h };
 }
 
+type Region = { cx: number; cy: number; cw: number; ch: number };
+
+/**
+ * The region grown by `fx` of its width on each side and `fy` of its height above and below, kept inside the
+ * frame. Side photos need it: the tight face-oval crop of a turned head cuts off the jaw and ear, and the AI
+ * service then answers "unable to recognize face" and fails the whole check.
+ */
+export function widenRegion(r: Region, frame: { width: number; height: number }, fx: number, fy: number): Region {
+  const cx = Math.max(0, r.cx - r.cw * fx);
+  const cy = Math.max(0, r.cy - r.ch * fy);
+  return {
+    cx,
+    cy,
+    cw: Math.min(frame.width, r.cx + r.cw * (1 + fx)) - cx,
+    ch: Math.min(frame.height, r.cy + r.ch * (1 + fy)) - cy,
+  };
+}
+
 /** Same region at up to 1280 px wide (at least 480, the AI service's minimum). */
 function uploadCrop(bitmap: ImageBitmap, r: { cx: number; cy: number; cw: number; ch: number }): Promise<Blob | null> {
   const uw = Math.round(Math.min(1280, Math.max(480, r.cw)));
@@ -123,7 +141,8 @@ export async function analyzeSide(bitmap: ImageBitmap): Promise<SideAnalysis> {
   const zones = buildZones(pts, w, h);
   const measured = measure({ width: w, height: h, data: img.data }, zones, { only: [facingCheek(zones)] });
   if (!measured.ok) return { ok: false };
-  return { ok: true, intensities: sideIntensities(measured.raw), uploadBlob: await uploadCrop(bitmap, region) };
+  const uploadRegion = widenRegion(region, bitmap, 0.3, 0.15);
+  return { ok: true, intensities: sideIntensities(measured.raw), uploadBlob: await uploadCrop(bitmap, uploadRegion) };
 }
 
 /** Adds what the side photos show to a front analysis. A side that fails is left out, silently. */

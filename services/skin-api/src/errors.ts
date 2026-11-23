@@ -27,6 +27,8 @@ export interface FailureDetail {
   /** The provider's own error code (or a socket error code like ECONNRESET). */
   providerCode?: string;
   providerMessage?: string;
+  /** How many side photos went with the failed provider call. */
+  sidesSent?: number;
 }
 
 /** An error the client is meant to see, rendered as {"error": code, "message": text}. */

@@ -18,7 +18,7 @@ import { fakeJpeg, fakePng } from "./helpers.js";
 
 const CONCERNS: ConcernId[] = ["acne", "wrinkles", "pores", "texture"];
 
-function setup(reply?: Reply, extra: Partial<AilabOptions> = {}) {
+function setup(reply?: Reply | Reply[], extra: Partial<AilabOptions> = {}) {
   const fake = fakeAilab(reply);
   const provider = createAilabProvider({ apiKey: AIL_KEY, baseUrl: AIL_BASE, tier: "pro", fetch: fake.fetch, ...extra });
   const analyze = (input: Partial<AnalyzeInput> = {}) =>
@@ -197,6 +197,43 @@ describe("ailabtools provider: side photos (Pro left_side_image / right_side_ima
     expect(result.usedSides).toBe(false);
   });
 
+  it("retries with the front photo alone when AILabTools cannot read a side photo", async () => {
+    const { fake, analyze } = setup([ailabError(422, "ERROR_FACE_UNRECOGNIZABLE"), { body: proSample() }]);
+    const result = await analyze({ sides: { left: fakeJpeg(500, 4), right: fakeJpeg(600, 5) } });
+
+    expect(fake.calls).toHaveLength(2);
+    expect(fake.calls[0]?.fields.left_side_image).toBeDefined();
+    expect(Object.keys(fake.calls[1]?.fields ?? {}).sort()).toEqual(["image", "return_maps"]);
+    expect(result.usedSides).toBe(false);
+    expect(result.sidesRejected).toBe("ERROR_FACE_UNRECOGNIZABLE");
+    expect(result.concerns.length).toBeGreaterThan(0);
+  });
+
+  it("reports the front-only failure when the retry fails too", async () => {
+    const { fake, analyze } = setup([ailabError(422, "ERROR_FACE_UNRECOGNIZABLE"), ailabError(422, "ERROR_NO_FACE_IN_FILE")]);
+    const err = await errorOf(analyze({ sides: { left: fakeJpeg() } }));
+    expect(fake.calls).toHaveLength(2);
+    expect(err.code).toBe("no_face");
+    expect(err.detail).toMatchObject({ providerCode: "ERROR_NO_FACE_IN_FILE", sidesSent: 0 });
+  });
+
+  it.each([
+    [401, "ERROR_UNAUTHORIZED"],
+    [429, "ERROR_NOT_ENOUGH_CREDITS"],
+    [500, "SOMETHING_NEW"],
+  ])("does not retry HTTP %i %s (not about the photos)", async (httpStatus, providerCode) => {
+    const { fake, analyze } = setup(ailabError(httpStatus, providerCode));
+    const err = await errorOf(analyze({ sides: { left: fakeJpeg() } }));
+    expect(fake.calls).toHaveLength(1);
+    expect(err.detail.sidesSent).toBe(1);
+  });
+
+  it("does not retry a photo error when no side photo was sent", async () => {
+    const { fake, analyze } = setup(ailabError(422, "ERROR_FACE_UNRECOGNIZABLE"));
+    await errorOf(analyze());
+    expect(fake.calls).toHaveLength(1);
+  });
+
   it("ignores side photos on the Advanced tier", async () => {
     const { fake, analyze } = setup({ body: advancedSample() }, { tier: "advanced" });
     const result = await analyze({ sides: { left: fakeJpeg(), right: fakeJpeg() } });
@@ -282,6 +319,10 @@ describe("ailabtools provider: errors", () => {
     [415, "UNSUPPORTED_FILE_TYPES", "bad_image", 400],
     [422, "FILE_DECODING_FAILURE", "bad_image", 400],
     [422, "ERROR_BLURRY_FACE", "provider_error", 502],
+    [422, "ERROR_FACE_UNRECOGNIZABLE", "provider_error", 502],
+    [422, "FILE_CONTENT_NON_COMPLIANCE", "provider_error", 502],
+    [422, "ERROR_NO_RECOGNITION_TARGET_DETECTED", "no_face", 422],
+    [422, "ERROR_CHIN_OCCLUSION_TOO_HIGH", "provider_error", 502],
     [429, "ERROR_TOO_MANY_REQUESTS", "rate_limited", 429],
     [503, "AI_SERVICE_FLOW_RESTRICTION", "rate_limited", 429],
     [429, "", "rate_limited", 429],
@@ -296,6 +337,11 @@ describe("ailabtools provider: errors", () => {
     expect(err.message.length).toBeGreaterThan(0);
     expect(err.detail).toMatchObject({ step: "analyze", providerStatus: httpStatus });
     if (providerCode) expect(err.detail.providerCode).toBe(providerCode);
+  });
+
+  it("asks for a retake when the face cannot be recognized", async () => {
+    const { analyze } = setup(ailabError(422, "ERROR_FACE_UNRECOGNIZABLE"));
+    expect((await errorOf(analyze())).message).toMatch(/retake/i);
   });
 
   it("explains low-quality photos in the message", async () => {

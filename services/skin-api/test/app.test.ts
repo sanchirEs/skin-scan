@@ -260,6 +260,20 @@ describe("logging", () => {
     expect(log.lines).toHaveLength(1);
     expect(JSON.parse(log.lines[0]!)).toMatchObject({ event: "analyze_ok", provider: "mock", usedSides: false });
   });
+
+  it("logs sidesRejected but keeps it out of the response", async () => {
+    const log = memoryLogger();
+    const provider = stubProvider(async () => ({
+      provider: "mock",
+      concerns: [],
+      skinAge: null,
+      usedSides: false,
+      sidesRejected: "ERROR_FACE_UNRECOGNIZABLE",
+    }));
+    const res = await analyze(makeApp({ logger: log.logger, provider }));
+    expect(await json(res)).toEqual({ provider: "mock", concerns: [], skinAge: null, usedSides: false });
+    expect(JSON.parse(log.lines[0]!)).toMatchObject({ event: "analyze_ok", sidesRejected: "ERROR_FACE_UNRECOGNIZABLE" });
+  });
 });
 
 describe("POST /v1/analyze: multipart with side photos", () => {

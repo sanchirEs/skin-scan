@@ -170,7 +170,11 @@ variables. Never put them in the repo.
   but its concern is kept.
 - **Side photos:** with Pro, side photos are sent as `left_side_image` / `right_side_image` (JPEG
   only; PNG sides are skipped). Their `left_acne_info.score` / `right_acne_info.score` become acne
-  regions `leftSide` / `rightSide`.
+  regions `leftSide` / `rightSide`. If AILabTools rejects a request that had side photos because
+  of the photos (HTTP 400/413/415/422, for example `ERROR_FACE_UNRECOGNIZABLE`), the call is
+  retried once with the front photo alone. Failed calls are not billed. The `analyze_ok` log
+  line then has `sidesRejected` with the provider's code, and `provider_failed` lines have
+  `sidesSent`.
 - **Advanced:** has no numeric scores, so yes/no answers and severity levels are mapped onto
   the Pro bands. This mapping is an ASSUMPTION; see `DEGREE` in `src/providers/ailabtools.ts`.
   Advanced does not measure texture.
