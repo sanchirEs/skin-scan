@@ -1,10 +1,13 @@
 "use client";
 
+import { ArrowLeft, DeviceMobile, Eyeglasses, LockSimple, Sparkle, SunHorizon, UserFocus } from "@phosphor-icons/react/dist/ssr";
 import { useEffect } from "react";
 import { M } from "@/config/messages";
 import { preloadLandmarker } from "@/lib/vision/landmarker";
 import { Button } from "../ui/Button";
 import { useFlow } from "./flow";
+
+const TIP_ICONS = [Eyeglasses, UserFocus, SunHorizon, DeviceMobile];
 
 export function Tips() {
   const { state, dispatch } = useFlow();
@@ -14,43 +17,63 @@ export function Tips() {
     if (!state.demo) preloadLandmarker();
   }, [state.demo]);
 
+  const start = (consent: boolean) => {
+    dispatch({ type: "aiConsent", consent });
+    dispatch({ type: "go", step: "camera" });
+  };
+
+  const choices = [
+    { consent: true, Icon: Sparkle, title: M.tips.startAi, note: M.tips.startAiNote, primary: true },
+    { consent: false, Icon: LockSimple, title: M.tips.startLocal, note: M.tips.startLocalNote, primary: false },
+  ];
+
   return (
-    <div className="flex min-h-[calc(100dvh-56px)] flex-col">
-      <div className="flex-1 px-5 pt-9">
-        <h1 className="type-display text-[30px]">{M.tips.title}</h1>
-        <ul className="mt-7 space-y-5">
-          {M.tips.items.map((item) => (
-            <li key={item} className="flex gap-4 text-[17px] leading-[1.5]">
-              <span aria-hidden className="mt-[7px] block h-3 w-3 shrink-0 rounded-[3px] bg-cap" />
-              <span className="max-w-[34ch]">{item}</span>
+    <div className="flex min-h-[calc(100dvh-56px)] flex-col px-5 pt-4 pb-[max(20px,env(safe-area-inset-bottom))]">
+      <Button variant="quiet" className="-ml-3 self-start" onClick={() => dispatch({ type: "go", step: "welcome", dir: -1 })}>
+        <ArrowLeft size={18} weight="bold" aria-hidden />
+        {M.tips.back}
+      </Button>
+      <h1 className="type-display mt-2 text-[34px]">{M.tips.title}</h1>
+
+      <ul className="mt-6 grid grid-cols-2 gap-2.5">
+        {M.tips.items.map((item, i) => {
+          const Icon = TIP_ICONS[i];
+          return (
+            <li key={item} className="rounded-[var(--radius-card)] bg-strip-raised p-4 lift">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-cap-tint text-cap">
+                <Icon size={22} weight="duotone" aria-hidden />
+              </span>
+              <span className="mt-3 block text-[15px] leading-[1.4]">{item}</span>
             </li>
+          );
+        })}
+      </ul>
+
+      <div className="mt-auto pt-8">
+        <h2 className="type-display text-[22px]">{M.tips.choose}</h2>
+        <div className="mt-3 grid gap-2.5">
+          {choices.map(({ consent, Icon, title, note, primary }) => (
+            <button
+              key={title}
+              type="button"
+              onClick={() => start(consent)}
+              className={`flex items-center gap-3.5 rounded-[var(--radius-card)] px-4 py-3.5 text-left transition-[transform,background-color] duration-150 active:scale-[0.98] ${
+                primary ? "bg-cap text-cap-ink hover:bg-cap-deep" : "bg-strip-raised text-ink ring-1 ring-rule hover:ring-ink-faint"
+              }`}
+            >
+              <span
+                className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${primary ? "bg-white/12" : "bg-cap-tint text-cap"}`}
+              >
+                <Icon size={22} weight={primary ? "fill" : "duotone"} aria-hidden />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[17px] font-semibold">{title}</span>
+                <span className={`block text-[14px] ${primary ? "text-cap-ink/75" : "text-ink-soft"}`}>{note}</span>
+              </span>
+            </button>
           ))}
-        </ul>
-      </div>
-      <div className="flex flex-col gap-2 px-5 pt-6 pb-[max(20px,env(safe-area-inset-bottom))]">
-        <p className="mb-1.5 text-[14px] leading-snug text-ink-soft">{M.tips.aiNotice}</p>
-        <Button
-          className="w-full"
-          onClick={() => {
-            dispatch({ type: "aiConsent", consent: true });
-            dispatch({ type: "go", step: "camera" });
-          }}
-        >
-          {M.tips.startAi}
-        </Button>
-        <Button
-          variant="secondary"
-          className="w-full"
-          onClick={() => {
-            dispatch({ type: "aiConsent", consent: false });
-            dispatch({ type: "go", step: "camera" });
-          }}
-        >
-          {M.tips.startLocal}
-        </Button>
-        <Button variant="quiet" onClick={() => dispatch({ type: "go", step: "welcome", dir: -1 })}>
-          {M.tips.back}
-        </Button>
+        </div>
+        <p className="mt-3 text-[13px] leading-snug text-ink-faint">{M.tips.aiNotice}</p>
       </div>
     </div>
   );

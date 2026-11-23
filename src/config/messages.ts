@@ -11,10 +11,13 @@ export const M = {
   band: { duration: "About 1 minute", steps: ["Scan", "Questions", "Reading", "Order"] },
 
   welcome: {
-    title: "Read your skin in about a minute",
+    title: "See what your skin is telling you",
     body: "Hold your phone at arm's length. We measure redness, evenness, dark circles and shine on your phone, and you can add an AI check for acne, wrinkles and pores.",
-    example: "(Example reading.)",
-    keyNote: "Each pad is read against a key, like a test strip, so you see exactly where your skin sits.",
+    facts: [
+      "About a minute, start to finish",
+      "Measured on your phone. Photos are never stored",
+      "A morning and evening routine made for you",
+    ],
     start: "Start skin check",
     notice: "We never store your photos. We save only anonymous numbers from each scan.",
     privacy: "How we handle your data",
@@ -24,7 +27,10 @@ export const M = {
     aiNotice:
       "With the AI check, your front and side photos are sent securely to our AI partner to find acne, wrinkles and pores. We don't store them. Otherwise, the side photos are only used on this phone.",
     startAi: "Scan with AI check",
+    startAiNote: "Adds acne, wrinkles and pores",
     startLocal: "Scan on this phone only",
+    startLocalNote: "Photos never leave your phone",
+    choose: "Choose your scan",
     title: "Before you scan",
     items: [
       "Take off makeup and glasses.",
@@ -100,6 +106,7 @@ export const M = {
     title: "Reading your skin",
     body: "Measuring each zone of your face, right here on this phone.",
     retake: "Retake scan",
+    retakeHint: "Face the light and fill the oval, then retake.",
     failures: {
       "no-face": "We couldn't find your face in the photo.",
       "too-few-pixels": "Part of your face was out of view.",
@@ -167,7 +174,8 @@ export const M = {
 
   report: {
     title: "Your skin reading",
-    subtitle: "Tap any pad to see what it means and where it was found.",
+    subtitle: "Tap a result to see what it means and where on your face it was read.",
+    findingsTitle: "Your results",
     phoneTitle: "Measured on this phone",
     summary: (name: string, level: string) => `Your strongest sign: ${name.toLowerCase()}, ${level.toLowerCase()}.`,
     summaryCalm: "No strong signs in this scan.",
@@ -362,6 +370,7 @@ export const M = {
     qty: "Quantity",
     less: "One less",
     more: "One more",
+    detailsTitle: "Your details",
     name: "Name",
     phone: "Phone",
     phoneHelp: "We'll call this number to confirm.",
@@ -388,6 +397,12 @@ export const M = {
   done: {
     title: "Order sent",
     reference: (id: string) => `Reference ${id}`,
+    nextTitle: "What happens next",
+    next: [
+      "We call you to confirm what you ordered.",
+      "You pay by cash on delivery or bank transfer.",
+      "Your products are delivered.",
+    ],
     back: "Back to my reading",
   },
 } as const;

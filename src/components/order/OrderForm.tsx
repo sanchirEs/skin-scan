@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Plus } from "@phosphor-icons/react/dist/ssr";
+import { ArrowLeft, Minus, Plus, Truck } from "@phosphor-icons/react/dist/ssr";
 import { useId, useMemo, useState, type ReactNode } from "react";
 import { BRAND, formatPrice } from "@/config/brand";
 import { M } from "@/config/messages";
@@ -10,6 +10,7 @@ import { readUtm } from "@/lib/utm";
 import { useFlow } from "../flow/flow";
 import { useRoutine } from "../report/useRoutine";
 import { Button } from "../ui/Button";
+import { ProductArt } from "../visual/ProductArt";
 
 type FieldErrors = Partial<Record<"name" | "phone" | "consent" | "items", string>>;
 type SubmitError = "network" | "server" | "rate" | null;
@@ -53,7 +54,7 @@ function Field({
 }
 
 const inputClass =
-  "h-12 w-full rounded-[var(--radius-field)] bg-flash px-3.5 text-[17px] text-ink ring-1 ring-rule placeholder:text-ink-faint " +
+  "h-13 w-full rounded-[var(--radius-field)] bg-flash px-4 text-[17px] text-ink ring-1 ring-rule placeholder:text-ink-faint " +
   "outline-none transition-shadow duration-150 focus:ring-2 focus:ring-cap aria-[invalid=true]:ring-2 aria-[invalid=true]:ring-stamp";
 
 export function OrderForm() {
@@ -137,9 +138,10 @@ export function OrderForm() {
   return (
     <div className="px-5 pt-5 pb-10">
       <Button variant="quiet" className="-ml-3" onClick={() => dispatch({ type: "go", step: "report", dir: -1 })}>
+        <ArrowLeft size={18} weight="bold" aria-hidden />
         {M.order.back}
       </Button>
-      <h1 className="type-display mt-3 text-[32px]">{M.order.title}</h1>
+      <h1 className="type-display mt-2 text-[38px]">{M.order.title}</h1>
       <p className="mt-2.5 max-w-[38ch] text-[16px] leading-[1.5] text-ink-soft">{M.order.body}</p>
 
       <ul className="mt-7 space-y-2.5" aria-label="Products">
@@ -148,10 +150,16 @@ export function OrderForm() {
           return (
             <li
               key={p.id}
-              className={`rounded-[var(--radius-card)] px-4 py-3.5 ring-1 transition-colors duration-200 ${
-                line.on ? "bg-strip-raised ring-rule" : "bg-transparent ring-rule/70"
+              className={`flex gap-3.5 rounded-[var(--radius-card)] p-3 transition-colors duration-200 ${
+                line.on ? "bg-strip-raised lift" : "bg-transparent ring-1 ring-rule"
               }`}
             >
+              <ProductArt
+                id={p.id}
+                slot={p.slot[0]}
+                className={`h-[76px] w-[82px] shrink-0 transition-opacity ${line.on ? "" : "opacity-40 grayscale"}`}
+              />
+              <div className="min-w-0 flex-1">
               {/* Name gets the full width; controls sit on their own row so long names never crush. */}
               <div className="flex items-start justify-between gap-3">
                 <p className={`min-w-0 text-[16px] font-semibold leading-snug ${line.on ? "" : "text-ink-faint line-through"}`}>
@@ -166,13 +174,13 @@ export function OrderForm() {
               <div className="mt-2.5 flex items-center justify-between gap-2">
                 {line.on ? (
                   <>
-                    <div className="flex items-center rounded-full ring-1 ring-rule" role="group" aria-label={`${M.order.qty}, ${p.name}`}>
+                    <div className="flex items-center rounded-full bg-strip" role="group" aria-label={`${M.order.qty}, ${p.name}`}>
                       <button
                         type="button"
                         aria-label={M.order.less}
                         disabled={line.qty <= 1}
                         onClick={() => setLine(p.id, { qty: line.qty - 1 })}
-                        className="grid h-10 w-10 place-items-center rounded-full text-ink disabled:text-ink-faint/60"
+                        className="grid h-9 w-9 place-items-center rounded-full text-ink disabled:text-ink-faint/60"
                       >
                         <Minus size={16} weight="bold" />
                       </button>
@@ -184,7 +192,7 @@ export function OrderForm() {
                         aria-label={M.order.more}
                         disabled={line.qty >= 9}
                         onClick={() => setLine(p.id, { qty: line.qty + 1 })}
-                        className="grid h-10 w-10 place-items-center rounded-full text-ink disabled:text-ink-faint/60"
+                        className="grid h-9 w-9 place-items-center rounded-full text-ink disabled:text-ink-faint/60"
                       >
                         <Plus size={16} weight="bold" />
                       </button>
@@ -199,20 +207,27 @@ export function OrderForm() {
                   </Button>
                 )}
               </div>
+              </div>
             </li>
           );
         })}
       </ul>
       {errors.items && <p className="mt-2 text-[14px] font-semibold text-stamp">{errors.items}</p>}
 
-      <div className="mt-4 flex items-baseline justify-between border-t border-rule pt-4">
-        <span className="text-[17px] font-semibold">{M.order.total}</span>
-        <span className="type-numeral text-[26px] font-semibold">{formatPrice(total)}</span>
+      <div className="mt-4 rounded-[var(--radius-card)] bg-cap px-4 py-4 text-cap-ink">
+        <div className="flex items-baseline justify-between">
+          <span className="text-[17px] font-semibold">{M.order.total}</span>
+          <span className="type-numeral text-[30px] font-semibold">{formatPrice(total)}</span>
+        </div>
+        <p className="mt-1.5 flex items-start gap-2 text-[14px] leading-snug text-cap-ink/80">
+          <Truck size={18} weight="duotone" className="mt-px shrink-0" aria-hidden />
+          {M.order.payLater}
+        </p>
       </div>
-      <p className="mt-1 text-[14px] text-ink-soft">{M.order.payLater}</p>
 
+      <h2 className="type-display mt-10 text-[24px]">{M.order.detailsTitle}</h2>
       <form
-        className="mt-8 grid gap-5"
+        className="mt-4 grid gap-5"
         noValidate
         onSubmit={(e) => {
           e.preventDefault();

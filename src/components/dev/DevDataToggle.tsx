@@ -10,7 +10,7 @@ export function DevDataToggle() {
     <div
       role="group"
       aria-label="Dev data set"
-      className="fixed left-1/2 top-[64px] z-50 flex -translate-x-1/2 gap-0.5 rounded-full bg-[#e2e2e2] p-0.5 font-[system-ui] text-[12px] shadow"
+      className="fixed left-2 bottom-2 z-50 opacity-70 hover:opacity-100 flex gap-0.5 rounded-full bg-[#e2e2e2] p-0.5 font-[system-ui] text-[12px] shadow"
     >
       {DATA_VARIANTS.map((v) => (
         <button

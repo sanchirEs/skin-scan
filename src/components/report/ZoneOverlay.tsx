@@ -24,6 +24,7 @@ export function ZoneOverlay({
   maskUrl = null,
   show,
   spots,
+  className = "",
 }: {
   photoUrl: string;
   zones: Record<ZoneId, Mask>;
@@ -34,6 +35,7 @@ export function ZoneOverlay({
   maskUrl?: string | null;
   show: boolean;
   spots: Pt[];
+  className?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -74,7 +76,7 @@ export function ZoneOverlay({
 
   return (
     <div
-      className="relative mx-auto w-full max-w-[340px] overflow-hidden rounded-[var(--radius-card)] bg-strip ring-1 ring-rule"
+      className={`relative w-full overflow-hidden bg-strip ${className}`}
       style={{ aspectRatio: `${size.w} / ${size.h}` }}
     >
       <div className="absolute inset-0 -scale-x-100">

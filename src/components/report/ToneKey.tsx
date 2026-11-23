@@ -6,7 +6,7 @@ import { TONES } from "../strip/colors";
 export function ToneKey({ tone }: { tone: Tone }) {
   const name = M.report.tone.names[tone.category];
   return (
-    <section className="rounded-[var(--radius-card)] bg-strip-raised px-4 py-4 ring-1 ring-rule" aria-labelledby="tone-title">
+    <section className="rounded-[var(--radius-strip)] bg-strip-raised px-4 py-4 lift" aria-labelledby="tone-title">
       <div className="flex items-baseline justify-between gap-3">
         <h2 id="tone-title" className="text-[17px] font-semibold">
           {M.report.tone.title}
@@ -19,7 +19,7 @@ export function ToneKey({ tone }: { tone: Tone }) {
           return (
             <li key={t.id} className="flex flex-col items-center">
               <span
-                className={`block h-7 w-full rounded-[var(--radius-pad)] ${mine ? "ring-2 ring-ink ring-offset-2 ring-offset-strip-raised" : ""}`}
+                className={`block h-9 w-full rounded-full ${mine ? "ring-2 ring-ink ring-offset-2 ring-offset-strip-raised" : ""}`}
                 style={{ backgroundColor: t.color }}
               />
               <span className={`mt-2 text-center text-[11.5px] leading-tight ${mine ? "font-semibold text-ink" : "text-ink-faint"}`}>

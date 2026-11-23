@@ -1,12 +1,17 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo } from "next/font/google";
+import { Bricolage_Grotesque, Instrument_Sans } from "next/font/google";
 import { BRAND } from "@/config/brand";
 import "./globals.css";
 
-const archivo = Archivo({
+const display = Bricolage_Grotesque({
   subsets: ["latin"],
-  axes: ["wdth"],
-  variable: "--font-archivo",
+  variable: "--nf-display",
+  display: "swap",
+});
+
+const body = Instrument_Sans({
+  subsets: ["latin"],
+  variable: "--nf-body",
   display: "swap",
 });
 
@@ -19,12 +24,12 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#0e4d48",
+  themeColor: "#f1f0f5",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${archivo.variable} h-full antialiased`}>
+    <html lang="en" className={`${display.variable} ${body.variable} h-full antialiased`}>
       <body className="min-h-dvh">{children}</body>
     </html>
   );

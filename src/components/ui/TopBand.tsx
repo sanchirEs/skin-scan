@@ -13,34 +13,40 @@ const STAGE: Record<Step, number> = {
   done: 3,
 };
 
-/** The vial-cap band: brand on the left, the four stages as small pads on the right. */
+/** Brand mark on the left; on later steps, the stage name and a four-part progress line. */
 export function TopBand({ step }: { step: Step }) {
   const stage = STAGE[step];
   return (
-    <header className="sticky top-0 z-20 bg-cap text-cap-ink pt-[env(safe-area-inset-top)]">
-      <div className="mx-auto flex h-14 max-w-[560px] items-center justify-between px-4">
-        <span className="text-[17px] font-semibold" style={{ fontStretch: "112%" }}>
-          {BRAND.name}
+    <header className="sticky top-0 z-20 bg-strip/85 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+      <div className="mx-auto flex h-14 max-w-[560px] items-center justify-between gap-4 px-5">
+        <span className="flex items-center gap-2">
+          <span aria-hidden className="grid h-7 w-7 place-items-center rounded-full bg-cap">
+            <span className="block h-2.5 w-2.5 rounded-full bg-cap-tint" />
+          </span>
+          <span className="type-display text-[18px]">{BRAND.name}</span>
         </span>
         {stage < 0 ? (
-          <span className="text-[14px] text-cap-ink/85">{M.band.duration}</span>
+          <span className="text-[14px] text-ink-soft">{M.band.duration}</span>
         ) : (
-          <ol className="flex items-center gap-1.5" aria-label="Progress">
-            {M.band.steps.map((label, i) => (
-              <li key={label} className="flex items-center">
-                <span
-                  aria-current={i === stage ? "step" : undefined}
-                  className={`block h-3 w-5 rounded-[3px] transition-colors duration-300 ${
-                    i < stage ? "bg-cap-ink/70" : i === stage ? "bg-cap-ink" : "bg-cap-ink/20"
-                  }`}
-                />
-                <span className="sr-only">
-                  {label}
-                  {i < stage ? ", done" : i === stage ? ", current" : ""}
-                </span>
-              </li>
-            ))}
-          </ol>
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="text-[13px] font-semibold text-ink-soft">{M.band.steps[stage]}</span>
+            <ol className="flex items-center gap-1" aria-label="Progress">
+              {M.band.steps.map((label, i) => (
+                <li key={label}>
+                  <span
+                    aria-current={i === stage ? "step" : undefined}
+                    className={`block h-1.5 rounded-full transition-all duration-300 ${
+                      i === stage ? "w-6 bg-cap" : i < stage ? "w-3 bg-cap/55" : "w-3 bg-rule"
+                    }`}
+                  />
+                  <span className="sr-only">
+                    {label}
+                    {i < stage ? ", done" : i === stage ? ", current" : ""}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
         )}
       </div>
     </header>

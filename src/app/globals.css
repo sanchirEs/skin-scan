@@ -1,21 +1,23 @@
 @import "tailwindcss";
 
-/* Test strip world: strip white ground, ink, one vial-cap teal for the shell.
-   Colour otherwise lives only inside pads, keys and the photo. Light only:
-   the screen is the light source during capture. */
+/* Cool mist ground, deep violet for the shell and actions. Measurement colour
+   lives in the face map, the meters and the photo. Light only: the screen is
+   the light source during capture. */
 :root {
-  --strip: #f3f5f2;
-  --strip-raised: #fbfcfa;
+  --strip: #f1f0f5;
+  --strip-raised: #ffffff;
   --flash: #ffffff;
-  --ink: #15191b;
-  --ink-soft: #4a5257;
-  --ink-faint: #6b7378;
-  --rule: #d5dad6;
-  --cap: #0e4d48;
-  --cap-deep: #0a3935;
-  --cap-ink: #f3f5f2;
-  --cap-tint: #dceae7;
-  --stamp: #9d2a2a;
+  --ink: #1a1625;
+  --ink-soft: #4f4a5c;
+  --ink-faint: #6e687b;
+  --rule: #dedae6;
+  --cap: #3d2a5c;
+  --cap-deep: #2a1c42;
+  --cap-ink: #ffffff;
+  --cap-tint: #ebe4f5;
+  --stamp: #a3263a;
+  --mint: #dcefe6;
+  --mint-ink: #1f5b44;
 
   --red-0: #f7e1e1;
   --red-1: #c2263d;
@@ -51,11 +53,14 @@
   --color-cap-ink: var(--cap-ink);
   --color-cap-tint: var(--cap-tint);
   --color-stamp: var(--stamp);
-  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
-  --radius-strip: 10px;
-  --radius-pad: 4px;
-  --radius-card: 14px;
-  --radius-field: 10px;
+  --color-mint: var(--mint);
+  --color-mint-ink: var(--mint-ink);
+  --font-sans: var(--nf-body), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--nf-display), ui-sans-serif, system-ui, sans-serif;
+  --radius-strip: 22px;
+  --radius-pad: 6px;
+  --radius-card: 20px;
+  --radius-field: 14px;
   --ease-out: var(--ease-out);
 }
 
@@ -92,19 +97,24 @@ a {
   text-decoration-thickness: 1px;
 }
 
-/* Width axis carries the type voices: expanded headings, condensed numerals. */
+/* Bricolage Grotesque carries the voice: tight display headings and numerals. */
 .type-display {
-  font-stretch: 116%;
-  font-weight: 640;
-  letter-spacing: -0.025em;
-  line-height: 1.08;
+  font-family: var(--nf-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.04;
   text-wrap: balance;
 }
 
 .type-numeral {
-  font-stretch: 72%;
+  font-family: var(--nf-display), ui-sans-serif, system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
+  letter-spacing: -0.01em;
+}
+
+/* Soft lift for raised surfaces: one shadow used everywhere. */
+.lift {
+  box-shadow: 0 1px 0 rgb(26 22 37 / 0.04), 0 12px 32px -20px rgb(42 28 66 / 0.28);
 }
 
 .tnum {

@@ -1,12 +1,13 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { M } from "@/config/messages";
 import type { Reading } from "@/lib/analysis/types";
 import { keyChips } from "../strip/colors";
 import { KeyCard } from "./KeyCard";
 
 /** An on-phone reading against its key. */
-export function KeyScale({ reading, delay = 0, onSelect }: { reading: Reading; delay?: number; onSelect?: () => void }) {
+export function KeyScale({ reading, delay = 0, media }: { reading: Reading; delay?: number; media?: ReactNode }) {
   const m = M.report.measures[reading.id];
   const levelWord = reading.id === "shine" && reading.label === "balanced" ? M.report.balanced : M.report.levels[reading.level];
   return (
@@ -19,7 +20,7 @@ export function KeyScale({ reading, delay = 0, onSelect }: { reading: Reading; d
       sentence={m.say[reading.level]}
       where={m.where}
       delay={delay}
-      onSelect={onSelect}
+      media={media}
     />
   );
 }

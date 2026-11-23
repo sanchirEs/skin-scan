@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { M } from "@/config/messages";
@@ -343,13 +344,14 @@ export function Camera() {
     <div className="flex min-h-dvh flex-col bg-flash pt-[env(safe-area-inset-top)]">
       <div className="px-3 pt-2">
         <Button variant="quiet" onClick={() => dispatch({ type: "go", step: "tips", dir: -1 })}>
+          <ArrowLeft size={18} weight="bold" aria-hidden />
           {M.camera.back}
         </Button>
       </div>
 
       <div className="flex flex-1 flex-col items-center justify-center px-6 pb-10">
         <div
-          className={`relative aspect-[3/4] w-[min(74vw,330px)] overflow-hidden rounded-[50%] bg-strip ring-[3px] transition-[box-shadow] duration-300 ${
+          className={`relative aspect-[3/4] w-[min(74vw,330px)] overflow-hidden rounded-[50%] bg-strip ring-4 ring-offset-4 ring-offset-flash transition-[box-shadow] duration-300 ${
             good ? "ring-cap" : "ring-rule"
           }`}
         >
@@ -384,7 +386,7 @@ export function Camera() {
           {[0, 1, 2, 3].map((i) => (
             <span
               key={i}
-              className="block h-2.5 w-7 rounded-[3px] transition-colors duration-150"
+              className="block h-1.5 w-8 rounded-full transition-colors duration-150"
               style={{ backgroundColor: view.capturing || view.hold > (i + 0.5) / 4 ? "var(--cap)" : "var(--rule)" }}
             />
           ))}
