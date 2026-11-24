@@ -8,7 +8,7 @@ describe("loadConfig", () => {
       provider: "youcam",
       youcam: { apiKey: undefined, baseUrl: "https://yce-api-01.makeupar.com" },
       ailabtools: { apiKey: undefined, baseUrl: "https://www.ailabapi.com", tier: "pro" },
-      concerns: ["acne", "wrinkles", "pores", "texture"],
+      concerns: ["acne", "wrinkles", "pores", "texture", "spots", "redness", "oiliness", "darkCircles", "eyeBags", "moisture", "radiance", "firmness"],
       allowedOrigins: [],
       rateLimitPerMin: 6,
       maxImageBytes: 5_000_000,
@@ -57,7 +57,7 @@ describe("loadConfig", () => {
     const config = loadConfig({ PORT: "", YOUCAM_API_KEY: "   ", SKIN_CONCERNS: "" });
     expect(config.port).toBe(8080);
     expect(config.youcam.apiKey).toBeUndefined();
-    expect(config.concerns).toEqual(["acne", "wrinkles", "pores", "texture"]);
+    expect(config.concerns).toEqual(["acne", "wrinkles", "pores", "texture", "spots", "redness", "oiliness", "darkCircles", "eyeBags", "moisture", "radiance", "firmness"]);
   });
 
   it("rejects unknown providers and concern ids", () => {

@@ -12,7 +12,7 @@ import { fakeClock, fakeJpeg, fakePng, memoryLogger } from "./helpers.js";
 const ORIGINS = "http://localhost:3000,https://*-sanchires-projects.vercel.app";
 const PREVIEW = "https://skin-check-git-main-sanchires-projects.vercel.app";
 const YOUCAM_ENV = { SKIN_PROVIDER: "youcam", YOUCAM_API_KEY: API_KEY, YOUCAM_BASE_URL: BASE };
-const AILAB_ENV = { SKIN_PROVIDER: "ailabtools", AILABTOOLS_API_KEY: AIL_KEY, AILAB_BASE_URL: AIL_BASE };
+const AILAB_ENV = { SKIN_PROVIDER: "ailabtools", AILABTOOLS_API_KEY: AIL_KEY, AILAB_BASE_URL: AIL_BASE, SKIN_CONCERNS: "acne,wrinkles,pores,texture" };
 
 interface Setup {
   env?: Record<string, string>;
@@ -54,7 +54,7 @@ describe("GET /health", () => {
       ok: true,
       provider: "mock",
       configured: true,
-      concerns: ["acne", "wrinkles", "pores", "texture"],
+      concerns: ["acne", "wrinkles", "pores", "texture", "spots", "redness", "oiliness", "darkCircles", "eyeBags", "moisture", "radiance", "firmness"],
     });
   });
 
@@ -64,7 +64,7 @@ describe("GET /health", () => {
       ok: true,
       provider: "youcam",
       configured: false,
-      concerns: ["acne", "wrinkles", "pores", "texture"],
+      concerns: ["acne", "wrinkles", "pores", "texture", "spots", "redness", "oiliness", "darkCircles", "eyeBags", "moisture", "radiance", "firmness"],
     });
   });
 
@@ -324,7 +324,7 @@ describe("POST /v1/analyze: multipart with side photos", () => {
     expect(res.status).toBe(200);
     const body = await json(res);
     expect(body).toMatchObject({ provider: "mock", usedSides: false });
-    expect(body.concerns).toHaveLength(4);
+    expect(body.concerns).toHaveLength(12);
   });
 
   it.each<[string, Part[]]>([

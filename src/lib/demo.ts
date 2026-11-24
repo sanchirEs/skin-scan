@@ -26,6 +26,14 @@ export const DEMO_AI: AiResult = {
     { id: "wrinkles", score: 84, severity: 16, level: "none", maskUrl: null, regions: [] },
     { id: "pores", score: 41, severity: 59, level: "moderate", maskUrl: null, regions: [] },
     { id: "texture", score: 63, severity: 37, level: "mild", maskUrl: null, regions: [] },
+    { id: "spots", score: 78, severity: 22, level: "mild", maskUrl: null, regions: [] },
+    { id: "redness", score: 88, severity: 12, level: "none", maskUrl: null, regions: [] },
+    { id: "oiliness", score: 52, severity: 48, level: "moderate", maskUrl: null, regions: [] },
+    { id: "darkCircles", score: 70, severity: 30, level: "mild", maskUrl: null, regions: [] },
+    { id: "eyeBags", score: 90, severity: 10, level: "none", maskUrl: null, regions: [] },
+    { id: "moisture", score: 66, severity: 34, level: "mild", maskUrl: null, regions: [] },
+    { id: "radiance", score: 74, severity: 26, level: "mild", maskUrl: null, regions: [] },
+    { id: "firmness", score: 86, severity: 14, level: "none", maskUrl: null, regions: [] },
   ],
 };
 

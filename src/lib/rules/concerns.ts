@@ -1,5 +1,5 @@
 import type { AiConcern } from "../ai/types";
-import type { Level, Reading } from "../analysis/types";
+import type { Level } from "../analysis/types";
 import { CONCERN_ORDER, type Concern, type ConcernId, type QuizAnswers } from "./types";
 
 const RANK: Record<Level, number> = { none: 0, mild: 1, moderate: 2, high: 3 };
@@ -10,36 +10,38 @@ const step = (l: Level): Level => LEVELS[Math.min(3, RANK[l] + 1)];
 export const levelRank = (l: Level) => RANK[l];
 
 /**
- * Concerns from the on-phone readings, the AI check (when the person chose it)
- * and the quiz. A camera finding and an answer about the same thing combine.
+ * Concerns from the AI check and the quiz. The AI is the only thing that measures skin: the
+ * on-phone colour readings were too easily fooled by light and camera to drive the routine.
+ * Without the AI check, concerns come from the answers alone. A finding and an answer about
+ * the same thing combine; the stronger level wins.
  */
-export function deriveConcerns(readings: Reading[], q: QuizAnswers, ai: AiConcern[] = []): Concern[] {
-  const reading = (id: Reading["id"]) => readings.find((r) => r.id === id);
-  const aiFound = (id: AiConcern["id"]) => ai.find((c) => c.id === id);
-  /** The stronger of an on-phone reading and AI findings for the same concern. */
-  const measuredLevel = (...found: ({ level: Level; intensity?: number; severity?: number } | undefined)[]) => {
+export function deriveConcerns(q: QuizAnswers, ai: AiConcern[] = []): Concern[] {
+  const found = (id: AiConcern["id"]) => ai.find((c) => c.id === id);
+  /** The strongest of several AI findings that point at one concern. */
+  const measured = (...ids: AiConcern["id"][]) => {
     let level: Level = "none";
     let intensity: number | undefined;
-    for (const f of found) {
+    for (const f of ids.map(found)) {
       if (!f || RANK[f.level] <= RANK[level]) continue;
       level = f.level;
-      intensity = f.intensity ?? f.severity;
+      intensity = f.severity;
     }
     return { level, intensity };
   };
   const out: Concern[] = [];
 
-  const add = (id: ConcernId, measured: Level, answered: Level, intensity?: number) => {
-    const level = max(measured, answered);
+  const add = (id: ConcernId, m: { level: Level; intensity?: number }, answered: Level) => {
+    const level = max(m.level, answered);
     if (level === "none") return;
-    const source = measured !== "none" && answered !== "none" ? "both" : measured !== "none" ? "measured" : "answers";
-    out.push({ id, level, source, ...(measured !== "none" && intensity !== undefined ? { intensity } : {}) });
+    const source = m.level !== "none" && answered !== "none" ? "both" : m.level !== "none" ? "measured" : "answers";
+    out.push({ id, level, source, ...(m.level !== "none" && m.intensity !== undefined ? { intensity: m.intensity } : {}) });
   };
 
   const goal = (g: QuizAnswers["goals"][number]) => q.goals.includes(g);
+  const ifGoal = (g: QuizAnswers["goals"][number]): Level => (goal(g) ? "mild" : "none");
+
   const feelOil: Level = q.feel === "oily" ? "moderate" : q.feel === "t-zone" ? "mild" : "none";
-  const oil = measuredLevel(reading("shine"), aiFound("oiliness"), aiFound("pores"));
-  add("oiliness", oil.level, feelOil, oil.intensity);
+  add("oiliness", measured("oiliness", "pores"), feelOil);
 
   const breakouts: Record<QuizAnswers["breakouts"], Level> = {
     rarely: "none",
@@ -47,31 +49,20 @@ export function deriveConcerns(readings: Reading[], q: QuizAnswers, ai: AiConcer
     often: "moderate",
     painful: "high",
   };
-  const acne = measuredLevel(aiFound("acne"));
-  add("breakouts", acne.level, max(breakouts[q.breakouts], goal("clear") ? "mild" : "none"), acne.intensity);
+  add("breakouts", measured("acne"), max(breakouts[q.breakouts], ifGoal("clear")));
 
-  const measuredWithGoal = (
-    id: ConcernId,
-    g: QuizAnswers["goals"][number],
-    ...found: ({ level: Level; intensity?: number; severity?: number } | undefined)[]
-  ) => {
-    const m = measuredLevel(...found);
-    add(id, m.level, goal(g) ? "mild" : "none", m.intensity);
-  };
-  measuredWithGoal("redness", "calm", reading("redness"), aiFound("redness"));
-  measuredWithGoal("uneven", "even", reading("evenness"), aiFound("texture"), aiFound("spots"));
-  measuredWithGoal("darkCircles", "eyes", reading("darkCircles"), aiFound("darkCircles"));
-
-  add("dryness", "none", q.feel === "dry" ? "moderate" : goal("hydrate") ? "mild" : "none");
+  add("redness", measured("redness"), ifGoal("calm"));
+  add("uneven", measured("spots", "texture", "radiance"), ifGoal("even"));
+  add("darkCircles", measured("darkCircles", "eyeBags"), ifGoal("eyes"));
+  add("dryness", measured("moisture"), q.feel === "dry" ? "moderate" : ifGoal("hydrate"));
 
   const sensitivity: Record<QuizAnswers["stinging"], Level> = { no: "none", sometimes: "mild", often: "high" };
-  add("sensitivity", "none", sensitivity[q.stinging]);
+  add("sensitivity", { level: "none" }, sensitivity[q.stinging]);
 
   const older = q.age === "40-49" || q.age === "50+";
-  let aging: Level = goal("firm") ? "mild" : "none";
+  let aging: Level = ifGoal("firm");
   if (older) aging = aging === "none" ? "mild" : step(aging);
-  const wrinkles = measuredLevel(aiFound("wrinkles"), aiFound("firmness"));
-  add("aging", wrinkles.level, aging, wrinkles.intensity);
+  add("aging", measured("wrinkles", "firmness"), aging);
 
   return out.sort(
     (a, b) => RANK[b.level] - RANK[a.level] || CONCERN_ORDER.indexOf(a.id) - CONCERN_ORDER.indexOf(b.id),

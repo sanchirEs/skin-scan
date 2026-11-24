@@ -40,12 +40,12 @@ export default function Privacy() {
         </Section>
         <Section icon={<Sparkle {...icon} />} title="The AI check">
           If you choose &ldquo;Scan with AI check&rdquo;, cropped photos of your face, from the front and from each side, are sent
-          securely to our server and on to our AI partner, Perfect Corp (YouCam), to find acne, wrinkles and pores. We do not store
+          securely to our server and on to our AI partner, Perfect Corp (YouCam), to check your skin for things like acne, redness, spots, oil and dryness. We do not store
           the photos. Perfect Corp keeps the analysis results for up to 30 days under its own privacy policy. We keep only the
           resulting numbers. Without the AI check, the side photos are only used on your phone.
         </Section>
         <Section icon={<ChartBar {...icon} />} title="Anonymous scan numbers">
-          After each scan we save a few numbers (the readings shown on your report, photo quality and your phone type). They carry no
+          After each scan we save a few numbers (simple colour readings measured on your phone, photo quality and your phone type). They carry no
           name, photo or contact details. We use them to make the scan more accurate and to count how many scans lead to an order.
         </Section>
         <Section icon={<Package {...icon} />} title="When you order">

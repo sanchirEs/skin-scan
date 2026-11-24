@@ -31,7 +31,7 @@ To build app UI without spending credits, set `SKIN_PROVIDER=mock`.
 | `AILABTOOLS_API_KEY` | none                              | Secret. Never logged.                                                                                   |
 | `AILAB_BASE_URL`     | `https://www.ailabapi.com`        |                                                                                                         |
 | `AILAB_TIER`         | `pro`                             | `pro` (70 credits per successful call) or `advanced` (30 credits). See the AILabTools notes below.       |
-| `SKIN_CONCERNS`      | `acne,wrinkles,pores,texture`     | Any of `acne, wrinkles, pores, texture, spots, redness, oiliness, darkCircles, eyeBags, moisture, radiance, firmness`. Results come back in this order. |
+| `SKIN_CONCERNS`      | all twelve                        | Any of `acne, wrinkles, pores, texture, spots, redness, oiliness, darkCircles, eyeBags, moisture, radiance, firmness`. Results come back in this order. |
 | `ALLOWED_ORIGINS`    | none (no browser origins)         | Comma list of exact origins or patterns with `*`, e.g. `http://localhost:3000,https://*-sanchires-projects.vercel.app`. `*` matches letters, digits and `-` only, so it never crosses a dot. |
 | `RATE_LIMIT_PER_MIN` | `6`                               | Limit on `POST /v1/analyze` per client IP (first `x-forwarded-for` entry). In memory, per instance.     |
 | `MAX_IMAGE_BYTES`    | `5000000`                         | Per photo. `5_000_000` also works.                                                                      |

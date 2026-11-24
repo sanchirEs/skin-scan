@@ -45,7 +45,7 @@ describe("buildRoutine with an unflagged retinoid", () => {
       pregnant: "prefer-not",
       sun: "a-lot",
     };
-    const r = buildRoutine(deriveConcerns([], quiz), quiz, WORST_PRODUCTS);
+    const r = buildRoutine(deriveConcerns(quiz), quiz, WORST_PRODUCTS);
     const ids = r.slots.flatMap((s) => (s.product ? [s.product.id] : []));
     expect(ids).not.toContain("worst-serum");
     expect(r.excluded.map((e) => e.product.id)).toContain("worst-serum");

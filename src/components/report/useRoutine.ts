@@ -13,7 +13,7 @@ export function useRoutine() {
   return useMemo(() => {
     if (!state.analysis || !state.quiz) return null;
     const ai = state.ai.status === "done" ? state.ai.result.concerns : [];
-    const concerns = deriveConcerns(state.analysis.readings, state.quiz, ai);
+    const concerns = deriveConcerns(state.quiz, ai);
     const routine = buildRoutine(concerns, state.quiz, catalogFor(state.data));
     const products: Product[] = [];
     for (const s of routine.slots) if (s.product && !products.some((p) => p.id === s.product!.id)) products.push(s.product);

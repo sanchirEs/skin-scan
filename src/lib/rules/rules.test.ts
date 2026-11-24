@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { PRODUCTS } from "@/data/products";
-import type { Reading } from "../analysis/types";
+import type { AiConcern } from "../ai/types";
 import { deriveConcerns } from "./concerns";
 import { buildRoutine } from "./routine";
 import type { Product, QuizAnswers } from "./types";
 
-const calmReadings: Reading[] = [
-  { id: "redness", intensity: 10, level: "none" },
-  { id: "evenness", intensity: 50, level: "moderate" },
-  { id: "darkCircles", intensity: 5, level: "none" },
-  { id: "shine", intensity: 10, level: "none", label: "matte" },
-];
+const ai = (id: AiConcern["id"], level: AiConcern["level"], severity = 50): AiConcern => ({
+  id,
+  score: 100 - severity,
+  severity,
+  level,
+  maskUrl: null,
+  regions: [],
+});
 
 const baseQuiz: QuizAnswers = {
   feel: "normal",
@@ -22,32 +24,50 @@ const baseQuiz: QuizAnswers = {
   sun: "some",
 };
 
-const routineFor = (q: Partial<QuizAnswers>, readings = calmReadings, catalog: Product[] = PRODUCTS) => {
+const routineFor = (q: Partial<QuizAnswers>, found: AiConcern[] = [], catalog: Product[] = PRODUCTS) => {
   const quiz = { ...baseQuiz, ...q };
-  return buildRoutine(deriveConcerns(readings, quiz), quiz, catalog);
+  return buildRoutine(deriveConcerns(quiz, found), quiz, catalog);
 };
 
 const productsIn = (r: ReturnType<typeof routineFor>) => r.slots.flatMap((s) => (s.product ? [s.product] : []));
 
 describe("deriveConcerns", () => {
   it("takes breakouts from the answers alone", () => {
-    const c = deriveConcerns(calmReadings, { ...baseQuiz, breakouts: "often" });
+    const c = deriveConcerns({ ...baseQuiz, breakouts: "often" });
     expect(c.find((x) => x.id === "breakouts")).toMatchObject({ level: "moderate", source: "answers" });
   });
 
   it("raises a measured concern to mild when it is a goal", () => {
-    const c = deriveConcerns(calmReadings, { ...baseQuiz, goals: ["calm"] });
+    const c = deriveConcerns({ ...baseQuiz, goals: ["calm"] });
     expect(c.find((x) => x.id === "redness")?.level).toBe("mild");
   });
 
   it("drops concerns that are not there", () => {
-    const c = deriveConcerns(calmReadings, baseQuiz);
+    const c = deriveConcerns(baseQuiz);
     expect(c.find((x) => x.id === "redness")).toBeUndefined();
   });
 
   it("combines shine with how the skin feels for oiliness", () => {
-    const c = deriveConcerns(calmReadings, { ...baseQuiz, feel: "oily" });
+    const c = deriveConcerns({ ...baseQuiz, feel: "oily" });
     expect(c.find((x) => x.id === "oiliness")).toMatchObject({ level: "moderate", source: "answers" });
+  });
+
+  it("measures nothing without the AI check", () => {
+    const c = deriveConcerns(baseQuiz);
+    expect(c.every((x) => x.source === "answers")).toBe(true);
+  });
+
+  it("measures dryness, dullness and eye bags with the AI", () => {
+    const c = deriveConcerns(baseQuiz, [ai("moisture", "moderate", 45), ai("radiance", "mild", 25), ai("eyeBags", "high", 80)]);
+    expect(c.find((x) => x.id === "dryness")).toMatchObject({ level: "moderate", source: "measured", intensity: 45 });
+    expect(c.find((x) => x.id === "uneven")).toMatchObject({ level: "mild", source: "measured" });
+    expect(c.find((x) => x.id === "darkCircles")).toMatchObject({ level: "high", intensity: 80 });
+  });
+
+  it("does not raise a concern the AI found clear", () => {
+    const c = deriveConcerns(baseQuiz, [ai("darkCircles", "none", 5), ai("redness", "none", 3)]);
+    expect(c.find((x) => x.id === "darkCircles")).toBeUndefined();
+    expect(c.find((x) => x.id === "redness")).toBeUndefined();
   });
 });
 
@@ -85,21 +105,14 @@ describe("buildRoutine shape", () => {
   });
 
   it("never asks for more than five products", () => {
-    const busy: Reading[] = [
-      { id: "redness", intensity: 60, level: "moderate" },
-      { id: "evenness", intensity: 60, level: "moderate" },
-      { id: "darkCircles", intensity: 60, level: "moderate" },
-      { id: "shine", intensity: 60, level: "moderate", label: "shiny" },
-    ];
+    const busy = (["redness", "spots", "darkCircles", "oiliness", "moisture"] as const).map((id) => ai(id, "moderate", 60));
     const r = routineFor({ breakouts: "often", goals: ["firm", "eyes"], age: "40-49" }, busy);
     expect(new Set(productsIn(r).map((p) => p.id)).size).toBeLessThanOrEqual(5);
   });
 
   it("says what to look for when the range has nothing for a slot", () => {
     const noEye = PRODUCTS.filter((p) => !p.slot.includes("eye"));
-    const dark: Reading[] = calmReadings.map((x) =>
-      x.id === "darkCircles" ? { ...x, intensity: 60, level: "moderate" } : x,
-    );
+    const dark = [ai("darkCircles", "moderate", 60)];
     const r = routineFor({}, dark, noEye);
     const eye = r.slots.find((s) => s.slot === "eye");
     expect(eye?.product).toBeNull();
@@ -107,7 +120,7 @@ describe("buildRoutine shape", () => {
   });
 
   it("matches the look-for hint to the kind of product", () => {
-    const r = routineFor({ feel: "oily" }, calmReadings, []);
+    const r = routineFor({ feel: "oily" }, [], []);
     const hint = (slot: string) => r.slots.find((s) => s.slot === slot)?.lookFor.join(", ") ?? "";
     expect(hint("am-cleanser")).toMatch(/salicylic acid/);
     expect(hint("am-moisturizer")).not.toMatch(/salicylic acid/);

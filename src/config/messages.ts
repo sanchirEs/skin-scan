@@ -12,10 +12,10 @@ export const M = {
 
   welcome: {
     title: "See what your skin is telling you",
-    body: "Hold your phone at arm's length. We measure redness, evenness, dark circles and shine on your phone, and you can add an AI check for acne, wrinkles and pores.",
+    body: "Hold your phone at arm's length. Our AI checks acne, redness, spots, oil, dark circles, dryness and more, then builds your routine.",
     facts: [
       "About a minute, start to finish",
-      "Measured on your phone. Photos are never stored",
+      "Your photos are never stored",
       "A morning and evening routine made for you",
     ],
     start: "Start skin check",
@@ -25,11 +25,11 @@ export const M = {
 
   tips: {
     aiNotice:
-      "With the AI check, your front and side photos are sent securely to our AI partner to find acne, wrinkles and pores. We don't store them. Otherwise, the side photos are only used on this phone.",
+      "With the AI check, your front and side photos are sent securely to our AI partner to check your skin. We don't store them. Without it, your photos stay on this phone and your routine comes from your answers.",
     startAi: "Scan with AI check",
-    startAiNote: "Adds acne, wrinkles and pores",
+    startAiNote: "Checks acne, redness, spots, oil, dryness and more",
     startLocal: "Scan on this phone only",
-    startLocalNote: "Photos never leave your phone",
+    startLocalNote: "Photos never leave your phone. Routine from your answers only",
     choose: "Choose your scan",
     title: "Before you scan",
     items: [
@@ -104,7 +104,7 @@ export const M = {
 
   analyzing: {
     title: "Reading your skin",
-    body: "Measuring each zone of your face, right here on this phone.",
+    body: "Checking your photo and reading each zone of your face.",
     retake: "Retake scan",
     retakeHint: "Face the light and fill the oval, then retake.",
     failures: {
@@ -179,6 +179,7 @@ export const M = {
     phoneTitle: "Measured on this phone",
     summary: (name: string, level: string) => `Your strongest sign: ${name.toLowerCase()}, ${level.toLowerCase()}.`,
     summaryCalm: "No strong signs in this scan.",
+    summaryAnswers: "Your routine is based on your answers.",
     balanced: "Balanced",
     zonesOn: "Show where",
     zonesOff: "Hide zones",
@@ -242,9 +243,9 @@ export const M = {
       } satisfies Record<ToneCategory, string>,
     },
     fromAnswers: "From your answers",
-    answersNote: "The camera can't measure these, so they come from what you told us.",
+    answersNote: "These come from what you told us.",
     nothingToOrder: "Nothing in our range fits this routine yet. Message us and we'll help you choose.",
-    answersTitle: "What the camera can't see",
+    answersTitle: "From your answers",
     routineTitle: "Your routine",
     morning: "Morning",
     evening: "Evening",
@@ -263,17 +264,17 @@ export const M = {
 
   ai: {
     title: "AI check",
-    subtitle: "Acne, wrinkles and pores, found by our AI partner.",
-    pending: "Checking acne, wrinkles and pores. This takes a few seconds.",
-    off: "You chose to scan on this phone only, so acne, wrinkles and pores were not checked.",
+    subtitle: "Your skin, checked by our AI partner.",
+    pending: "Checking your skin. This takes a few seconds.",
+    off: "You chose to scan on this phone only, so the AI did not check your skin. Your routine comes from your answers.",
     failed: {
       no_face: "The AI check could not find your face clearly. Retake the scan to try again.",
       face_too_small: "Your face was too small or cut off for the AI check. Retake the scan a little closer.",
       too_dark: "The photo was too dark for the AI check. Retake it facing a window.",
       pose: "Your head was turned for the AI check. Retake it looking straight ahead.",
       image_too_small: "The photo was too small for the AI check. Retake the scan a little closer.",
-      not_configured: "The AI check is not switched on yet. Your other results are below.",
-      default: "The AI check is not available right now. Your other results are below.",
+      not_configured: "The AI check is not switched on yet. Your routine below comes from your answers.",
+      default: "The AI check is not available right now. Your routine below comes from your answers.",
     } as Record<string, string>,
     skinAge: (age: number) => `AI estimate of skin age: ${age}`,
     mapOn: "Show the AI map",
@@ -320,6 +321,94 @@ export const M = {
           mild: "A little unevenness in the skin surface.",
           moderate: "Noticeable bumps or roughness.",
           high: "Strong unevenness across the skin surface.",
+        },
+      },
+      spots: {
+        name: "Spots",
+        ends: ["Clear", "Spotted"],
+        where: "The AI marks dark spots on your photo",
+        say: {
+          none: "No clear dark spots in this scan.",
+          mild: "A few small dark spots.",
+          moderate: "Noticeable dark spots or patches.",
+          high: "Many dark spots across your face.",
+        },
+      },
+      redness: {
+        name: "Redness",
+        ends: ["Calm", "Red"],
+        where: "The AI marks red areas on your photo",
+        say: {
+          none: "No clear redness in this scan.",
+          mild: "A little redness, often around the nose or cheeks.",
+          moderate: "Noticeable redness in a few areas.",
+          high: "Strong redness across your face.",
+        },
+      },
+      oiliness: {
+        name: "Oiliness",
+        ends: ["Matte", "Oily"],
+        where: "The AI marks oily areas on your photo",
+        say: {
+          none: "Your skin looks balanced, not oily.",
+          mild: "A little oil, mostly on the forehead and nose.",
+          moderate: "Noticeable oil on the T-zone.",
+          high: "Strong oil across your face.",
+        },
+      },
+      darkCircles: {
+        name: "Dark circles",
+        ends: ["Bright", "Shadowed"],
+        where: "The AI marks darker skin under your eyes",
+        say: {
+          none: "Your under-eyes look bright.",
+          mild: "Slightly darker under the eyes.",
+          moderate: "Noticeably darker under the eyes.",
+          high: "Much darker under the eyes.",
+        },
+      },
+      eyeBags: {
+        name: "Eye bags",
+        ends: ["Smooth", "Puffy"],
+        where: "The AI marks puffiness under your eyes",
+        say: {
+          none: "No puffiness under the eyes.",
+          mild: "A little puffiness under the eyes.",
+          moderate: "Noticeable puffiness under the eyes.",
+          high: "Strong puffiness under the eyes.",
+        },
+      },
+      moisture: {
+        name: "Dryness",
+        ends: ["Hydrated", "Dry"],
+        where: "The AI marks dry areas on your photo",
+        say: {
+          none: "Your skin looks well hydrated.",
+          mild: "Slightly dry in places.",
+          moderate: "Noticeably dry skin.",
+          high: "Very dry skin.",
+        },
+      },
+      radiance: {
+        name: "Dullness",
+        ends: ["Glowing", "Dull"],
+        where: "The AI marks dull areas on your photo",
+        say: {
+          none: "Your skin looks bright and fresh.",
+          mild: "A little dull in places.",
+          moderate: "Noticeably dull or tired-looking skin.",
+          high: "Strongly dull skin.",
+        },
+      },
+      firmness: {
+        name: "Firmness",
+        ends: ["Firm", "Loose"],
+        where: "The AI marks areas that look less firm",
+        say: {
+          none: "Your skin looks firm.",
+          mild: "Slightly less firm in places.",
+          moderate: "Noticeably less firm, for example along the jaw.",
+          high: "Strong loss of firmness.",
         },
       },
     } as Partial<Record<AiConcernId, { name: string; ends: [string, string]; where: string; say: Record<Level, string> }>>,

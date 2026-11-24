@@ -39,7 +39,7 @@ const Env = z.object({
   AILABTOOLS_API_KEY: z.string().optional(),
   AILAB_BASE_URL: z.url().default("https://www.ailabapi.com"),
   AILAB_TIER: z.enum(AILAB_TIERS).default("pro"),
-  SKIN_CONCERNS: list("acne,wrinkles,pores,texture").pipe(z.array(z.enum(CONCERN_IDS)).min(1)),
+  SKIN_CONCERNS: list("acne,wrinkles,pores,texture,spots,redness,oiliness,darkCircles,eyeBags,moisture,radiance,firmness").pipe(z.array(z.enum(CONCERN_IDS)).min(1)),
   ALLOWED_ORIGINS: list(""),
   RATE_LIMIT_PER_MIN: int(6),
   MAX_IMAGE_BYTES: int(5_000_000),

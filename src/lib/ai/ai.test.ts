@@ -141,17 +141,17 @@ describe("requestAiAnalysis with side photos", () => {
 
 describe("AI results feed the routine", () => {
   it("turns camera-found acne into a breakouts concern", () => {
-    const c = deriveConcerns([], quiz, [concern("acne", 55, "moderate")]);
+    const c = deriveConcerns(quiz, [concern("acne", 55, "moderate")]);
     expect(c.find((x) => x.id === "breakouts")).toMatchObject({ level: "moderate", source: "measured", intensity: 55 });
   });
 
   it("combines AI acne with what the person told us", () => {
-    const c = deriveConcerns([], { ...quiz, breakouts: "often" }, [concern("acne", 30, "mild")]);
+    const c = deriveConcerns({ ...quiz, breakouts: "often" }, [concern("acne", 30, "mild")]);
     expect(c.find((x) => x.id === "breakouts")).toMatchObject({ level: "moderate", source: "both" });
   });
 
   it("turns wrinkles into the aging concern and pores into oiliness", () => {
-    const c = deriveConcerns([], quiz, [concern("wrinkles", 50, "moderate"), concern("pores", 30, "mild")]);
+    const c = deriveConcerns(quiz, [concern("wrinkles", 50, "moderate"), concern("pores", 30, "mild")]);
     expect(c.find((x) => x.id === "aging")?.level).toBe("moderate");
     expect(c.find((x) => x.id === "oiliness")?.level).toBe("mild");
   });

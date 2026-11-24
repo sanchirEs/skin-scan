@@ -37,7 +37,7 @@ export type Concern = {
   id: ConcernId;
   level: Level;
   source: "measured" | "answers" | "both";
-  /** Camera intensity 0..100, when the concern was measured. */
+  /** AI severity 0..100, when the concern was measured. */
   intensity?: number;
 };
 
