@@ -231,7 +231,7 @@ export function Camera() {
 
       let landmarker;
       try {
-        landmarker = await withTimeout(loadLandmarker("VIDEO"), MODEL_TIMEOUT_MS);
+        landmarker = await withTimeout(loadLandmarker(), MODEL_TIMEOUT_MS);
       } catch {
         stop();
         fail("model");

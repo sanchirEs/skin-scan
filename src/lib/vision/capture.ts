@@ -3,6 +3,7 @@ import type { FaceLandmarker, NormalizedLandmark } from "@mediapipe/tasks-vision
 import { isSpecular, srgbToLab } from "../color/convert";
 import { checkQuality, laplacianVariance, lightProblem, poseFromMatrix, type Hint, type LightProblem } from "../analysis/quality";
 import { FACE_OVAL } from "../analysis/zones";
+import { nextTimestamp } from "./landmarker";
 
 const SAMPLE_W = 160;
 let sampleCanvas: HTMLCanvasElement | null = null;
@@ -64,7 +65,7 @@ export function liveQuality(
   prev: NormalizedLandmark[] | null,
   ts: number,
 ): LiveResult {
-  const res = landmarker.detectForVideo(video, ts);
+  const res = landmarker.detectForVideo(video, nextTimestamp(ts));
   const faces = res.faceLandmarks.length;
   const none = { faceWidth: 0, light: 0, yaw: 0, motion: 0 };
   if (faces === 0) return { hint: "no-face", landmarks: null, faces, light: null, metrics: none };

@@ -7,7 +7,7 @@ import { M } from "@/config/messages";
 import { requestAiAnalysis } from "@/lib/ai/client";
 import { DEMO_AI, demoAnalysis } from "@/lib/demo";
 import { addSides, analyzeFrame, type FrameAnalysis } from "@/lib/vision/analyze-frame";
-import { VisionLoadError } from "@/lib/vision/landmarker";
+import { VisionLoadError, releaseLandmarker } from "@/lib/vision/landmarker";
 import { TimeoutError, withTimeout } from "@/lib/timeout";
 import { RAMPS } from "../strip/colors";
 import { Button } from "../ui/Button";
@@ -46,6 +46,9 @@ export function Analyzing() {
         console.error(err);
         res = { ok: false, reason: "no-face" };
       }
+      // The photos are read: free the face model before the quiz and the AI upload (iPhone in-app browsers
+      // have little memory to spare). A retake loads it again.
+      if (!state.demo) releaseLandmarker();
       const wait = MIN_SHOW_MS - (performance.now() - started);
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       if (!alive) return;

@@ -6,7 +6,7 @@ import { combineSides, sideIntensities, toReadings, type SideIntensities } from 
 import type { RawMetrics, Reading, Tone } from "../analysis/types";
 import { FACE_OVAL, buildZones, facingCheek, type ZoneId } from "../analysis/zones";
 import { withTimeout } from "../timeout";
-import { loadLandmarker } from "./landmarker";
+import { detectStill } from "./landmarker";
 
 const WORK_WIDTH = 480;
 /** A side photo that takes longer than this is left out; the front result never waits on it. */
@@ -67,6 +67,12 @@ function cropFace(bitmap: ImageBitmap, lm: NormalizedLandmark[]) {
   return { region: { cx, cy, cw, ch }, canvas, img, pts, w, h };
 }
 
+/** iOS keeps a canvas's pixels until it is garbage-collected; a zero size frees them now. */
+function freeCanvas(c: HTMLCanvasElement) {
+  c.width = 0;
+  c.height = 0;
+}
+
 type Region = { cx: number; cy: number; cw: number; ch: number };
 
 /**
@@ -93,21 +99,32 @@ function uploadCrop(bitmap: ImageBitmap, r: { cx: number; cy: number; cw: number
   upload.width = uw;
   upload.height = uh;
   upload.getContext("2d")!.drawImage(bitmap, r.cx, r.cy, r.cw, r.ch, 0, 0, uw, uh);
-  return new Promise<Blob | null>((resolve) => upload.toBlob(resolve, "image/jpeg", 0.9));
+  return new Promise<Blob | null>((resolve) =>
+    upload.toBlob((b) => {
+      freeCanvas(upload);
+      resolve(b);
+    }, "image/jpeg", 0.9),
+  );
 }
 
 export async function analyzeFrame(bitmap: ImageBitmap): Promise<FrameAnalysis> {
-  const landmarker = await loadLandmarker("IMAGE");
-  const res = landmarker.detect(bitmap);
+  const res = await detectStill(bitmap);
   if (!res.faceLandmarks.length) return { ok: false, reason: "no-face" };
 
   const { region, canvas, img, pts, w, h } = cropFace(bitmap, res.faceLandmarks[0]);
   const zones = buildZones(pts, w, h);
   const measured = measure({ width: w, height: h, data: img.data }, zones);
-  if (!measured.ok) return { ok: false, reason: measured.reason };
+  if (!measured.ok) {
+    freeCanvas(canvas);
+    return { ok: false, reason: measured.reason };
+  }
 
   const blob = await new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("photo encode failed"))), "image/jpeg", 0.9),
+    canvas.toBlob((b) => {
+      freeCanvas(canvas);
+      if (b) resolve(b);
+      else reject(new Error("photo encode failed"));
+    }, "image/jpeg", 0.9),
   );
   const uploadBlob = await uploadCrop(bitmap, region);
 
@@ -133,11 +150,11 @@ export type SideAnalysis = { ok: true; intensities: SideIntensities; uploadBlob:
  * redness and evenness (spots). The rest of the reading stays front-only.
  */
 export async function analyzeSide(bitmap: ImageBitmap): Promise<SideAnalysis> {
-  const landmarker = await loadLandmarker("IMAGE");
-  const res = landmarker.detect(bitmap);
+  const res = await detectStill(bitmap);
   if (!res.faceLandmarks.length) return { ok: false };
 
-  const { region, img, pts, w, h } = cropFace(bitmap, res.faceLandmarks[0]);
+  const { region, canvas, img, pts, w, h } = cropFace(bitmap, res.faceLandmarks[0]);
+  freeCanvas(canvas);
   const zones = buildZones(pts, w, h);
   const measured = measure({ width: w, height: h, data: img.data }, zones, { only: [facingCheek(zones)] });
   if (!measured.ok) return { ok: false };

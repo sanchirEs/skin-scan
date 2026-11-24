@@ -156,7 +156,20 @@ export function createApp({ config, provider, logger = consoleLogger, now = Date
       logger.info("request_rejected", { path: c.req.path, code: err.code, status: err.status });
       return c.json(err.toJSON(), err.status);
     }
-    logger.error("unexpected_error", { path: c.req.path, error: err.name });
+    // The phone closed the connection mid-upload (page reloaded, crashed or was left): reading the body then
+    // fails. That is not a server fault, and the provider was never called.
+    if (c.req.raw.signal.aborted) {
+      logger.warn("client_aborted", { path: c.req.path, error: err.name, ua: c.req.header("user-agent")?.slice(0, 160) });
+      return c.body(null, 499 as never);
+    }
+    // Errors that reach here never come from a provider call (those are caught in the route), so the message
+    // holds no keys; it is cut short anyway.
+    logger.error("unexpected_error", {
+      path: c.req.path,
+      error: err.name,
+      message: err.message.slice(0, 200),
+      cause: err.cause instanceof Error ? err.cause.message.slice(0, 200) : undefined,
+    });
     return c.json(new ApiError("internal_error").toJSON(), 500);
   });
 
