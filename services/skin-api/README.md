@@ -118,11 +118,21 @@ API keys and image bytes are never logged.
 
 ## Deploy (Railway)
 
-Point a Railway service at this repo and set its **Root Directory** to `services/skin-api`.
-Railway does not look for the config file relative to the Root Directory, so set the config
-file path to `/services/skin-api/railway.json`. That file sets the build command, start command
-(`node dist/index.js`), health check (`/health`) and watch paths. Set the API keys as Railway
-variables. Never put them in the repo.
+The service's settings live in `.railway/railway.ts` (Railway Infrastructure as Code): build
+command, start command (`node dist/index.js`) and health check (`/health`). Railway does not
+read that file during a deploy. Push changes to it with `railway config plan`, then
+`railway config apply`, run in PowerShell from this folder. In Git Bash the `railway` package's
+version check misreads the CLI version and refuses to run.
+
+Every variable the service has must be listed under `env` in that file, or `apply` deletes it.
+They are listed as `preserve()`, which keeps the value set in Railway, so the API keys never go
+in the repo. Set or change values in the Railway dashboard; add the name to the file too.
+
+Deploy the code from this folder:
+
+```bash
+railway up --project 7b44c9ca-fe47-49d4-ab9d-eb3ee36972e1 --environment 757d20fc-b130-4a23-81cb-cca0c2a2fadb --service skin-api --detach
+```
 
 ## Adding a provider
 
